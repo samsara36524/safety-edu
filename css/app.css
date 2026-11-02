@@ -231,3 +231,23 @@ code { background: #f1f3f5; padding: 1px 5px; border-radius: 4px; }
 .rp-photo img { max-width: 100%; max-height: 640px; margin: 0 auto; border: 1px solid #ccc; }
 .rp-photo.small img { max-height: 300px; }
 .rp-photo figcaption { color: #444; font-size: 12px; }
+
+/* 검색 입력 */
+.sugg-wrap { position: relative; }
+.sugg { position: absolute; left: 0; right: 0; top: 100%; z-index: 40; margin: 4px 0 0; padding: 4px; list-style: none; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 20px rgba(0, 0, 0, .12); max-height: 320px; overflow: auto; }
+.sugg li { display: flex; flex-direction: column; padding: 10px 12px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+.sugg li span { color: var(--muted); font-size: 13px; font-weight: normal; }
+.sugg li:hover, .sugg li:active { background: #e7f0fb; }
+.sugg li.off { opacity: .5; cursor: default; }
+
+/* 현장·근로자 */
+.people { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.pchip { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 99px; background: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+.pchip.done { background: #e6f4ea; border-color: #b2dfbd; color: var(--ok); }
+.pchip.hit { background: #fff3bf; border-color: #fcc419; }
+.pchip button { border: 0; background: none; color: var(--muted); font-size: 14px; cursor: pointer; padding: 0 0 0 4px; }
+.site-list { display: grid; gap: 10px; margin-top: 12px; }
+.site { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
+.site .bar { margin: 0; }
+.site .bar > div:first-child { display: flex; flex-direction: column; }
+.addp input { flex: 1 1 200px; }

@@ -1,8 +1,8 @@
 // 오프라인 지원: 앱 파일을 저장해 두고, 인터넷이 없어도 열리게 한다.
-const CACHE = 'safety-edu-v1.0.2';
+const CACHE = 'safety-edu-v1.1.0';
 const CORE = [
   './', 'index.html', 'css/app.css', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png',
-  'js/codec.js', 'js/db.js', 'js/sig.js', 'js/qr.js', 'js/report.js', 'js/app.js', 'data/topics.json',
+  'js/codec.js', 'js/db.js', 'js/sig.js', 'js/qr.js', 'js/report.js', 'js/registry.js', 'js/app.js', 'data/topics.json',
   'vendor/qrcode.js', 'vendor/jsQR.js', 'vendor/html2canvas.min.js', 'vendor/jspdf.umd.min.js', 'vendor/jszip.min.js'
 ];
 const IMGS = Array.from({ length: 18 }, (_, i) => String(i + 1).padStart(2, '0'))

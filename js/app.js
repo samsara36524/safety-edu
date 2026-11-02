@@ -127,6 +127,7 @@ async function home() {
     <div class="grid2">
       <a class="tile" href="#/topics"><b>교육자료</b><span>작업별 안전수칙 보기·추가</span></a>
       <a class="tile" href="#/records"><b>교육 기록</b><span>지난 교육 결과 다시 저장</span></a>
+      <a class="tile" href="#/sites"><b>현장·근로자</b><span>교육한 현장과 교육받은 사람 검색·관리</span></a>
       <a class="tile" href="#/settings"><b>설정</b><span>저장 폴더·자료 백업</span></a>
       <a class="tile" href="#/help"><b>사용 방법</b><span>현장·원격 교육 진행 순서</span></a>
     </div>`;
@@ -286,10 +287,11 @@ async function importTopics() {
 }
 
 // ---------- 교육 진행 ----------
-async function newSession() {
+async function newSession(siteArg) {
   const inspector = INSPECTOR;
   const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  const s = { id: uid(10), created: Date.now(), site: '', place: '', inspector, date: d.toISOString().slice(0, 16), topics: [], topicData: [], judg: {}, workers: [], photo: '', step: 0, done: false };
+  const reg = siteArg ? await Registry.site(decodeURIComponent(siteArg)) : null;
+  const s = { id: uid(10), created: Date.now(), site: reg ? reg.name : '', place: reg ? reg.place : '', inspector, date: d.toISOString().slice(0, 16), topics: [], topicData: [], judg: {}, workers: [], photo: '', step: 0, done: false };
   await DB.put('sessions', s);
   location.replace('#/s/' + s.id + '/0');
 }
@@ -311,13 +313,26 @@ async function sessionView(id, stepStr) {
     const cats = {};
     Store.topics.forEach(t => { const g = t.custom ? '내가 추가한 자료' : String(t.cat).split('·')[0]; (cats[g] = cats[g] || []).push(t); });
     body.innerHTML = `<form class="form" id="f0">
-      <label>현장명 <input name="site" required value="${esc(s.site)}" placeholder="예: OO빌딩 신축공사"></label>
+      <label>현장명 <small>(등록된 현장은 검색해서 선택)</small><input name="site" required value="${esc(s.site)}" placeholder="현장명 입력 또는 검색 (초성 검색 가능)"></label>
+      <p class="hint" id="siteinfo"></p>
       <div class="grid2"><label>교육장소 <input name="place" value="${esc(s.place)}" placeholder="예: 3층 슬래브"></label>
       <label>교육일시 <input name="date" type="datetime-local" value="${esc(s.date)}"></label></div>
       <label>지도요원(점검자) <input value="${esc(INSPECTOR)}" readonly class="fixed"></label>
       <fieldset><legend>교육할 작업 선택 <small>(여러 개 선택 가능)</small></legend>
       ${Object.entries(cats).map(([g, list]) => `<div class="chk-group"><b>${esc(g)}</b>${list.map(t => `<label class="chip"><input type="checkbox" name="t" value="${t.id}" ${s.topics.includes(t.id) ? 'checked' : ''}><span>${esc(t.title)}</span></label>`).join('')}</div>`).join('')}
       </fieldset></form>` + nav(null, 1);
+    const f0 = $('#f0');
+    const siteInfo = async () => {
+      const st = await Registry.site(f0.site.value);
+      const n = st ? Object.keys(st.people).length : 0;
+      $('#siteinfo').textContent = !f0.site.value.trim() ? '' : st ? `✔ 등록된 현장 · 교육받은 근로자 ${n}명` : '새 현장 — 교육을 시작하면 등록됩니다.';
+    };
+    Search.attach(f0.site, async q => (await Registry.sites())
+      .filter(st => Search.match(st.name, q))
+      .map(st => ({ value: st.name, sub: `${st.place ? st.place + ' · ' : ''}근로자 ${Object.keys(st.people).length}명 · 최근 ${Report.fmtDate(new Date(st.updated).toISOString(), false)}`, st })),
+    it => { if (it.st.place) f0.place.value = it.st.place; siteInfo(); });
+    f0.site.addEventListener('input', siteInfo);
+    siteInfo();
     bindNav(async () => {
       const f = $('#f0'), fd = new FormData(f);
       if (!fd.get('site').trim()) { toast('현장명을 입력하세요.'); return false; }
@@ -327,6 +342,7 @@ async function sessionView(id, stepStr) {
       Object.assign(s, { site: fd.get('site').trim(), place: fd.get('place').trim(), date: fd.get('date'), inspector: INSPECTOR, topics: ids });
       s.topicData = ids.map(i => JSON.parse(JSON.stringify(Store.byId[i])));
       await saveSession(s);
+      await Registry.addSite(s.site, s.place);
     });
     return;
   }
@@ -396,8 +412,9 @@ async function sessionView(id, stepStr) {
         <button class="btn ghost" id="a-paste">결과 코드 붙여넣기</button>
       </div>
       <h2 class="h">서명 현황 <span id="cnt"></span></h2>
-      <ol class="sig-list" id="sl"></ol>` + nav(2, 4);
-    const render = () => {
+      <ol class="sig-list" id="sl"></ol>
+      <div id="known"></div>` + nav(2, 4);
+    let render = () => {
       $('#cnt').textContent = `${s.workers.length} / ${MAX_WORKERS}`;
       $('#sl').innerHTML = s.workers.length ? s.workers.map((w, i) => `<li><img src="${Sig.toImage(w.sig, 250, 100)}"><div><b>${esc(w.name)}</b><span>${esc(w.via)} · ${esc(Report.fmtDate(new Date(w.at * 1000).toISOString()))}</span></div><button class="btn ghost sm" data-del="${i}">삭제</button></li>`).join('')
         : '<li class="empty">아직 받은 서명이 없습니다.</li>';
@@ -436,15 +453,36 @@ async function sessionView(id, stepStr) {
         if (r.ok) { m.close(); Object.assign(s, await DB.get('sessions', s.id)); render(); }
       };
     };
-    $('#a-dev').onclick = () => {
+    const devSign = async (preName = '') => {
       if (full()) return;
+      const known = await Registry.people(s.site);
       const m = modal(`<h2>근로자 확인 및 서명</h2>${workerConfirmHTML(s.topicData)}`, { wide: true });
       const pad = Sig.pad($('canvas', m.el));
+      const nameIn = $('[name=name]', m.el);
+      nameIn.value = preName;
+      attachNameSearch(nameIn, known, s.workers.map(w => w.name));
       bindWorkerForm(m.el, pad, async ({ name, sig }) => {
+        if (s.workers.some(w => w.name === name) && !confirm(`${name} 님은 이미 서명했습니다. 한 번 더 받을까요?`)) return;
         s.workers.push({ name, sig, at: Math.floor(Date.now() / 1000), via: '현장(지도요원 기기)' });
-        await saveSession(s); m.close(); render(); toast(`${name} 님 서명을 저장했습니다.`);
+        await saveSession(s);
+        await Registry.addPeople(s.site, [name]);
+        m.close(); render(); toast(`${name} 님 서명을 저장했습니다.`);
       });
     };
+    $('#a-dev').onclick = () => devSign();
+    // 이 현장에 등록된 근로자: 누르면 이름이 입력된 서명 창이 열린다
+    const renderKnown = async () => {
+      const known = await Registry.people(s.site);
+      const done = new Set(s.workers.map(w => w.name));
+      $('#known').innerHTML = known.length ? `<h2 class="h">이 현장 등록 근로자 <small>(누르면 바로 서명)</small></h2>
+        <div class="people">${known.map(n => `<button class="pchip ${done.has(n) ? 'done' : ''}" data-n="${esc(n)}">${esc(n)}${done.has(n) ? ' ✔' : ''}</button>`).join('')}</div>` : '';
+      $$('#known [data-n]').forEach(b => b.onclick = () => {
+        if (done.has(b.dataset.n)) { toast(`${b.dataset.n} 님은 이미 서명했습니다.`); return; }
+        devSign(b.dataset.n);
+      });
+    };
+    const render0 = render;
+    render = () => { render0(); renderKnown(); };
     render(); bindNav();
     return;
   }
@@ -552,8 +590,18 @@ async function inviteLink(s, mode) {
   const builtin = s.topicData.filter(t => !t.custom).map(t => t.id);
   // 내가 추가한 자료는 글 내용만 링크에 담는다 (사진·그림 제외)
   const c = s.topicData.filter(t => t.custom).map(t => ({ i: t.id, ti: t.title, ca: t.cat, su: t.suffix, de: t.desc, cs: t.cases, ru: t.rules, wo: t.worker, v: t.video }));
-  const code = await Codec.pack({ v: 1, s: s.id, n: s.site, p: s.place, d: s.date, t: builtin, c, m: mode });
+  // 이 현장에 등록된 근로자 이름(최근 40명)을 담아, 근로자가 자기 이름을 검색해 고를 수 있게 한다
+  const w = (await Registry.people(s.site)).slice(0, 40);
+  const code = await Codec.pack({ v: 1, s: s.id, n: s.site, p: s.place, d: s.date, t: builtin, c, m: mode, w });
   return `${APP_URL}#/w/${code}`;
+}
+// 이름 입력창에 등록 근로자 검색을 붙인다 (이미 서명한 사람은 표시만)
+function attachNameSearch(input, names, signed = []) {
+  if (!names || !names.length) return;
+  const done = new Set(signed);
+  input.placeholder = '이름 입력 또는 검색 (초성 검색 가능)';
+  Search.attach(input, async q => names.filter(n => Search.match(n, q))
+    .map(n => ({ value: n, sub: done.has(n) ? '이미 서명함' : '', disabled: done.has(n) })));
 }
 function workerConfirmHTML(topics) {
   return `<form class="form wform">
@@ -590,6 +638,7 @@ async function workerView(code) {
     <h2 class="h">확인 및 서명</h2>${workerConfirmHTML(topics)}
     <div id="wres"></div>`;
   const pad = Sig.pad($('canvas.sigpad'));
+  attachNameSearch($('.wform [name=name]'), p.w);
   const showResult = async (url, name) => {
     const res = $('#wres');
     $('.wform').classList.add('hide');
@@ -628,6 +677,7 @@ async function importCode(text, expectId) {
   if (s.workers.length >= MAX_WORKERS) return { ok: false, msg: `서명은 ${MAX_WORKERS}명까지입니다.`, s };
   s.workers.push({ name: r.n, sig: r.g, at: r.a, via: r.m === 'r' ? '원격(링크)' : '현장(QR)' });
   await saveSession(s);
+  await Registry.addPeople(s.site, [r.n]);
   return { ok: true, msg: `${r.n} 님 서명을 추가했습니다. (${s.workers.length}/${MAX_WORKERS})`, s };
 }
 async function importView(code) {
@@ -646,6 +696,62 @@ async function importView(code) {
     <p class="hint">열리지 않으면 아래 [코드 복사] 후, 앱의 해당 교육 → 서명 단계 → [결과 코드 붙여넣기]에 붙여넣으세요.</p>
     <div class="row center"><button class="btn" id="cp">코드 복사</button><a class="btn ghost" href="#/">처음으로</a></div>` : '<a class="btn" href="#/">처음으로</a>'}</section>`;
   if ($('#cp')) $('#cp').onclick = () => copyText(full);
+}
+
+// ---------- 현장·근로자 관리 ----------
+async function sitesView() {
+  view().innerHTML = `<div class="bar"><h1>현장·근로자</h1><button class="btn primary" id="addsite">＋ 현장 등록</button></div>
+    <p class="hint">교육한 현장과 교육받은 근로자는 자동으로 등록됩니다. 다음 교육 때 현장명과 이름을 검색해서 입력할 수 있습니다.</p>
+    <input id="q" type="search" placeholder="현장명 또는 근로자 이름 검색 (초성 검색 가능)">
+    <div id="slist" class="site-list"></div>`;
+  const draw = async () => {
+    const q = $('#q').value;
+    const list = (await Registry.sites()).filter(st => Search.match(st.name, q) || Object.keys(st.people).some(n => Search.match(n, q)));
+    $('#slist').innerHTML = list.length ? list.map(st => {
+      const people = Object.entries(st.people).sort((a, b) => b[1] - a[1]).map(e => e[0]);
+      return `<section class="site" data-site="${esc(st.name)}">
+        <div class="bar"><div><b>${esc(st.name)}</b><span class="hint">${st.place ? esc(st.place) + ' · ' : ''}근로자 ${people.length}명 · 최근 ${esc(Report.fmtDate(new Date(st.updated).toISOString(), false))}</span></div>
+          <div class="row"><a class="btn primary sm" href="#/new~${encodeURIComponent(st.name)}">이 현장 새 교육</a><button class="btn ghost sm" data-delsite>현장 삭제</button></div></div>
+        <div class="people">${people.map(n => `<span class="pchip ${q && Search.match(n, q) ? 'hit' : ''}">${esc(n)}<button data-delp="${esc(n)}" aria-label="${esc(n)} 삭제">✕</button></span>`).join('') || '<span class="hint">등록된 근로자가 없습니다.</span>'}</div>
+        <div class="row addp"><input placeholder="근로자 추가 (여러 명은 쉼표로 구분)"><button class="btn sm" data-addp>추가</button></div>
+      </section>`;
+    }).join('') : '<p class="hint">등록된 현장이 없습니다.</p>';
+    $$('#slist .site').forEach(el => {
+      const name = el.dataset.site;
+      $('[data-delsite]', el).onclick = async () => {
+        if (!confirm(`'${name}' 현장과 등록 근로자를 삭제할까요? (교육 기록은 남습니다)`)) return;
+        await Registry.removeSite(name); draw();
+      };
+      $$('[data-delp]', el).forEach(b => b.onclick = async () => {
+        if (!confirm(`${b.dataset.delp} 님을 이 현장 명단에서 삭제할까요?`)) return;
+        await Registry.removePerson(name, b.dataset.delp); draw();
+      });
+      const inp = $('.addp input', el);
+      const add = async () => {
+        const names = inp.value.split(/[,，\n]/).map(x => x.trim()).filter(Boolean);
+        if (!names.length) return;
+        await Registry.addPeople(name, names); toast(`${names.length}명을 추가했습니다.`); draw();
+      };
+      $('[data-addp]', el).onclick = add;
+      inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); add(); } };
+    });
+  };
+  $('#q').oninput = draw;
+  $('#addsite').onclick = () => {
+    const m = modal(`<h2>현장 등록</h2><form class="form" id="nsf">
+      <label>현장명 <input name="n" required></label><label>교육장소 <input name="p"></label>
+      <label>근로자 <small>(한 줄에 한 명, 또는 쉼표로 구분)</small><textarea name="w" rows="5"></textarea></label>
+      <button class="btn primary">등록</button></form>`);
+    $('#nsf', m.el).onsubmit = async e => {
+      e.preventDefault();
+      const fd = new FormData(e.target), n = fd.get('n').trim();
+      if (!n) return;
+      await Registry.addSite(n, fd.get('p').trim());
+      await Registry.addPeople(n, fd.get('w').split(/[,，\n]/));
+      m.close(); toast('등록했습니다.'); draw();
+    };
+  };
+  draw();
 }
 
 // ---------- 기록·설정·도움말 ----------
@@ -688,6 +794,11 @@ function help() {
     <li>서명 단계에서 <b>[원격 링크 보내기]</b> → 카카오톡·문자로 보냅니다.</li>
     <li>근로자는 링크를 열어 교육을 보고 서명한 뒤 <b>[결과 보내기]</b>로 지도요원에게 회신합니다.</li>
     <li>지도요원은 받은 결과 링크를 누르면 자동으로 서명이 추가됩니다. 카카오톡 안에서 열리면 [크롬으로 열기]를 누르세요. 안 되면 [결과 코드 붙여넣기]를 이용합니다.</li></ol>
+  <h2>현장·근로자 검색</h2><ol>
+    <li>교육한 현장과 서명한 근로자는 자동으로 등록됩니다. (홈 → <b>현장·근로자</b>에서 직접 등록·삭제도 가능)</li>
+    <li>새 교육의 현장명 칸에 글자나 초성(예: ㅅㅇ)을 넣으면 등록된 현장이 나오고, 고르면 교육장소도 채워집니다.</li>
+    <li>서명 단계의 <b>이 현장 등록 근로자</b> 이름을 누르면 이름이 입력된 서명 창이 열립니다. 이름 칸에서도 검색됩니다.</li>
+    <li>QR·원격 링크를 받은 근로자도 자기 이름을 검색해서 고를 수 있습니다.</li></ol>
   <h2>교육자료 추가</h2><ol>
     <li>교육자료 → <b>[새 교육자료]</b> 또는 기존 자료에서 <b>[복사해서 새 자료]</b>.</li>
     <li>점검표는 줄마다 한 항목. <code># 구분</code>, <code>! 핵심항목</code>, <code>* 참고설명</code> 규칙을 씁니다.</li>
@@ -699,7 +810,7 @@ function help() {
 // ---------- 라우터 ----------
 const routes = [
   [/^#?\/?$/, home], [/^#\/topics$/, topicsList], [/^#\/topic\/([^/]+)$/, topicView], [/^#\/src\/([^/]+)$/, srcView],
-  [/^#\/edit\/(.+)$/, editor], [/^#\/new$/, newSession], [/^#\/s\/([^/]+)(?:\/(\d))?$/, sessionView],
+  [/^#\/edit\/(.+)$/, editor], [/^#\/new(?:~(.+))?$/, newSession], [/^#\/sites$/, sitesView], [/^#\/s\/([^/]+)(?:\/(\d))?$/, sessionView],
   [/^#\/records$/, records], [/^#\/settings$/, settings], [/^#\/help$/, help],
   [/^#\/w\/(.+)$/, workerView], [/^#\/r\/(.+)$/, importView],
 ];
@@ -720,6 +831,7 @@ async function route() {
 
 (async function init() {
   try { await loadTopics(); } catch (e) { view().innerHTML = '<p class="err">교육자료를 불러오지 못했습니다. 인터넷 연결을 확인하세요.</p>'; return; }
+  await Registry.backfill().catch(() => {});
   window.addEventListener('hashchange', route);
   route();
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
