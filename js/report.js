@@ -19,7 +19,7 @@ const Report = (() => {
     newPage() {
       const page = document.createElement('div');
       page.className = 'rp-page';
-      page.innerHTML = `<div class="rp-top"><span>안전교육 결과</span><span>${esc(this.title)}</span></div><div class="rp-body"></div><div class="rp-foot"></div>`;
+      page.innerHTML = `<div class="rp-top"><img class="rp-logo" src="img/brand-logo.png" alt="사람인 안전지도사 사무소"><span>안전교육 결과 · ${esc(this.title)}</span></div><div class="rp-body"></div><div class="rp-foot"><span>사람인안전지도사사무소</span><span class="rp-pno"></span></div>`;
       this.root.appendChild(page);
       this.pages.push(page);
       this.body = page.querySelector('.rp-body');
@@ -147,7 +147,7 @@ const Report = (() => {
       }
 
       // 쪽번호
-      flow.pages.forEach((p, i) => { p.querySelector('.rp-foot').textContent = `- ${i + 1} / ${flow.pages.length} -`; });
+      flow.pages.forEach((p, i) => { p.querySelector('.rp-pno').textContent = `${i + 1} / ${flow.pages.length}`; });
       // 그림 로딩 대기 (img.decode()는 화면 밖에서 멈출 수 있어 load 이벤트 + 시간 제한 사용)
       await Promise.all([...root.querySelectorAll('img')].map(img => img.complete ? null : new Promise(r => {
         img.onload = img.onerror = r; setTimeout(r, 4000);

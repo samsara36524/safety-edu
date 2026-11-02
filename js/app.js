@@ -1,4 +1,4 @@
-// 안전교육 앱 본체
+// 안전지도 앱 본체 (사람인안전지도사사무소)
 const MAX_WORKERS = 6;
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -125,28 +125,40 @@ function bindTopicButtons(root, topics = []) {
   $$('.t-pages [data-slide]', root).forEach(img => img.onclick = () => Pages.show(find(img.closest('.t-pages').querySelector('[data-slides]').dataset.slides).pages, +img.dataset.slide));
 }
 
+const ICON = {"edu": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z\"/><path d=\"M4 20.5A2.5 2.5 0 0 1 6.5 18H20v3H6.5A2.5 2.5 0 0 1 4 20.5z\"/><path d=\"M9 8h7M9 11.5h5\"/></svg>", "tbm": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"5\" y=\"4\" width=\"14\" height=\"17\" rx=\"2\"/><path d=\"M9 4V2.8h6V4\"/><path d=\"m8.5 12.5 2.3 2.3 4.7-4.8\"/></svg>", "site": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"9\" cy=\"8\" r=\"3.2\"/><path d=\"M3.5 20a5.5 5.5 0 0 1 11 0\"/><circle cx=\"17\" cy=\"9\" r=\"2.4\"/><path d=\"M15.5 14.2A4.5 4.5 0 0 1 21 18.5\"/></svg>", "rec": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"3\" y=\"4\" width=\"18\" height=\"5\" rx=\"1.5\"/><path d=\"M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9\"/><path d=\"M10 13h4\"/></svg>", "set": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"3\"/><path d=\"M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z\"/></svg>", "help": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M9.5 9.3a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.3-2.5 4\"/><path d=\"M12 17.3h.01\"/></svg>"};
+// ---------- 앱 설치 (홈 화면에 등록) ----------
+let installEvt = null;
+const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; drawInstall(); });
+window.addEventListener('appinstalled', () => { installEvt = null; drawInstall(); toast('홈 화면에 "안전지도" 앱을 등록했습니다.', 3500); });
+function drawInstall() {
+  const box = document.getElementById('install');
+  if (!box) return;
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  if (standalone()) { box.innerHTML = ''; return; }
+  if (installEvt) {
+    box.innerHTML = `<button class="install" id="inst"><img src="icons/app-192.png" alt=""><span><b>홈 화면에 앱 설치</b><small>아이콘을 눌러 바로 실행 · 인터넷 없이도 열림</small></span><em>설치</em></button>`;
+    $('#inst').onclick = async () => { installEvt.prompt(); await installEvt.userChoice.catch(() => {}); installEvt = null; drawInstall(); };
+  } else if (ios) {
+    box.innerHTML = `<p class="install-tip">홈 화면에 앱으로 등록: Safari 아래 <b>공유</b> 버튼 → <b>홈 화면에 추가</b></p>`;
+  } else box.innerHTML = '';
+}
+
 // ---------- 화면: 홈 ----------
 async function home() {
   const sessions = (await DB.all('sessions').catch(() => [])).sort((a, b) => b.created - a.created);
-  const ongoing = sessions.filter(s => !s.done && s.kind !== 'tbm').slice(0, 3);
-  const tbmOn = sessions.filter(s => !s.done && s.kind === 'tbm').slice(0, 3);
+  const ongoing = sessions.filter(s => !s.done && s.kind !== 'tbm').slice(0, 5);
+  const tbmOn = sessions.filter(s => !s.done && s.kind === 'tbm').slice(0, 5);
+  const menu = [['#/topics', 'edu', '안전교육', '교육 시작·교육자료'], ['#/tbm', 'tbm', 'TBM 일지', '작업 전 안전점검회의'],
+    ['#/sites', 'site', '현장·근로자', '현장·교육받은 사람'], ['#/records', 'rec', '기록', '지난 결과 다시 저장'],
+    ['#/settings', 'set', '설정', '비밀번호·저장 폴더'], ['#/help', 'help', '사용 방법', '진행 순서 안내']];
   view().innerHTML = `
-    <section class="hero">
-      <h1>안전교육</h1>
-      <p>건설현장 고위험 작업 ${Store.topics.length}종 안전교육 · 자율점검 · 서명 확인</p>
-      <div class="row center"><a class="btn big primary" href="#/new">＋ 새 교육 시작</a><a class="btn big primary" href="#/tbm/new">＋ TBM 시작</a></div>
-    </section>
+    <div class="home-brand"><img src="img/brand-logo.png" alt="사람인 안전지도사 사무소"></div>
+    <div id="install"></div>
+    <nav class="menu2">${menu.map(([h, i, t, d]) => `<a href="${h}"><i>${ICON[i]}</i><b>${t}</b><span>${d}</span></a>`).join('')}</nav>
     ${ongoing.length ? `<h2 class="h">진행 중인 교육</h2><div class="cards">${ongoing.map(sessionCard).join('')}</div>` : ''}
-    ${tbmOn.length ? `<h2 class="h">진행 중인 TBM</h2><div class="cards">${tbmOn.map(TBM.card).join('')}</div>` : ''}
-    <h2 class="h">바로가기</h2>
-    <div class="grid2">
-      <a class="tile" href="#/tbm"><b>TBM 일지</b><span>작업 전 안전점검회의 기록·서명·PDF</span></a>
-      <a class="tile" href="#/topics"><b>교육자료</b><span>작업별 안전수칙 보기·추가</span></a>
-      <a class="tile" href="#/records"><b>교육 기록</b><span>지난 교육 결과 다시 저장</span></a>
-      <a class="tile" href="#/sites"><b>현장·근로자</b><span>교육한 현장과 교육받은 사람 검색·관리</span></a>
-      <a class="tile" href="#/settings"><b>설정</b><span>저장 폴더·자료 백업</span></a>
-      <a class="tile" href="#/help"><b>사용 방법</b><span>현장·원격 교육 진행 순서</span></a>
-    </div>`;
+    ${tbmOn.length ? `<h2 class="h">진행 중인 TBM</h2><div class="cards">${tbmOn.map(TBM.card).join('')}</div>` : ''}`;
+  drawInstall();
 }
 function sessionCard(s) {
   const n = s.workers.length;
@@ -161,8 +173,9 @@ function topicsList() {
   const groups = {};
   Store.topics.forEach(t => { const g = t.custom ? '내가 추가한 자료' : (t.extra ? '추가 자료' : String(t.cat).split('·')[0]); (groups[g] = groups[g] || []).push(t); });
   view().innerHTML = `
-    <div class="bar"><h1>교육자료</h1>
-      <div class="row"><a class="btn primary" href="#/edit/newpages">＋ 페이지 자료 등록</a><a class="btn" href="#/edit/new">＋ 새 교육자료</a><button class="btn ghost" id="imp">가져오기</button><button class="btn ghost" id="exp">내보내기</button></div></div>
+    <div class="bar"><h1>안전교육</h1></div>
+    <a class="btn big primary block" href="#/new">＋ 안전교육 시작</a>
+    <div class="subacts"><span>자료 추가</span><a class="btn sm" href="#/edit/newpages">페이지 자료(PDF·사진)</a><a class="btn sm" href="#/edit/new">직접 작성</a><button class="btn sm ghost" id="imp">가져오기</button><button class="btn sm ghost" id="exp">내보내기</button></div>
     ${Object.entries(groups).map(([g, list]) => `<h2 class="h">${esc(g)}</h2><div class="cards">${list.map(t => `
       <a class="card topic-card" href="#/topic/${t.id}">
         ${t.illust || (t.pages || [])[0] ? `<img src="${t.illust || t.pages[0].img}" alt="" loading="lazy">` : '<div class="noimg">자료</div>'}
@@ -762,7 +775,7 @@ async function importView(code) {
     return;
   }
   view().innerHTML = `<section class="result"><h2>${esc(r.msg)}</h2>
-    ${r.notFound ? `<p>근로자의 서명 결과는 <b>교육을 진행한 지도요원 기기의 크롬(또는 설치한 안전교육 앱)</b>에서 열어야 저장됩니다.</p>
+    ${r.notFound ? `<p>근로자의 서명 결과는 <b>교육을 진행한 지도요원 기기의 크롬(또는 설치한 안전지도 앱)</b>에서 열어야 저장됩니다.</p>
     ${kakao ? `<a class="btn big primary" href="kakaotalk://web/openExternal?url=${encodeURIComponent(full)}">크롬(외부 브라우저)으로 열기</a>` : ''}
     <p class="hint">열리지 않으면 아래 [코드 복사] 후, 앱의 해당 교육 → 서명 단계 → [결과 코드 붙여넣기]에 붙여넣으세요.</p>
     <div class="row center"><button class="btn" id="cp">코드 복사</button><a class="btn ghost" href="#/">처음으로</a></div>` : '<a class="btn" href="#/">처음으로</a>'}</section>`;
@@ -853,7 +866,7 @@ async function settings() {
       : '<p class="hint">이 기기의 브라우저는 폴더 지정을 지원하지 않습니다. 결과 화면에서 ZIP 저장(다운로드 폴더) 또는 공유(구글드라이브·원드라이브 등 원하는 폴더)를 이용하세요.</p>'}
     <h2 class="h">교육자료 백업</h2>
     <div class="row"><button class="btn ghost" id="exp">내가 추가한 자료 내보내기</button><button class="btn ghost" id="imp">가져오기</button></div>
-    <h2 class="h">정보</h2><p class="hint">안전교육 v${APP_VERSION} · 교육자료 ${Store.topics.length}종 · 서버 없이 이 기기에만 기록이 저장됩니다. 기기를 바꾸거나 브라우저 데이터를 지우면 기록이 사라지므로, 결과는 반드시 저장해 두세요.</p>`;
+    <h2 class="h">정보</h2><p class="hint">안전지도 v${APP_VERSION} · 사람인안전지도사사무소 · 교육자료 ${Store.topics.length}종 · 서버 없이 이 기기에만 기록이 저장됩니다. 기기를 바꾸거나 브라우저 데이터를 지우면 기록이 사라지므로, 결과는 반드시 저장해 두세요.</p>`;
   if ($('#pick')) $('#pick').onclick = async () => {
     try { const d = await window.showDirectoryPicker({ id: 'safety-edu', mode: 'readwrite' }); await DB.put('kv', d, 'dir'); settings(); } catch (e) { /* 취소 */ }
   };
@@ -907,7 +920,7 @@ function help() {
     <li>앱을 열 때와 근로자가 QR·링크로 들어올 때 숫자 6자리 비밀번호를 입력해야 화면이 보입니다. 근로자에게는 비밀번호를 말로 알려 주세요.</li>
     <li>한 번 입력하면 브라우저(앱)를 닫을 때까지 다시 묻지 않습니다.</li>
     <li>설정에서 바꿀 수 있습니다. 바꾼 비밀번호를 잊으면 이 기기의 기록을 열 수 없으니 꼭 적어 두세요.</li></ol>
-  <h2>앱 설치</h2><p>크롬 메뉴(⋮) → <b>홈 화면에 추가</b>(또는 앱 설치)를 누르면 앱처럼 쓸 수 있고, 인터넷이 없어도 열립니다.</p>
+  <h2>앱 설치 (홈 화면 등록)</h2><p>홈 화면의 <b>홈 화면에 앱 설치</b> 버튼을 누르거나, 크롬·삼성 인터넷 메뉴(⋮ 또는 ≡) → <b>홈 화면에 추가 / 앱 설치</b>를 누르면 휴대폰 홈 화면에 <b>안전지도</b> 아이콘이 생깁니다. 아이콘을 길게 누르면 <b>안전교육 시작</b>, <b>TBM 시작</b> 바로가기가 나옵니다. 설치 후에는 인터넷이 없어도 열립니다.</p>
   </article>`;
 }
 

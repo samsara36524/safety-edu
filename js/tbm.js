@@ -498,7 +498,7 @@ const TBM = (() => {
     const selfNotes = t.self ? t.workers.filter(w => w.q).map(w => `${esc(w.name)}: ${esc(selfSummary(w.q))}`) : [];
     return `<div class="tb-page">
       <div class="tb-head">
-        <h1>작업 전 안전점검회의(TBM) 일지</h1>
+        <div class="tb-title"><img class="tb-logo" src="img/brand-logo.png" alt="사람인 안전지도사 사무소"><h1>작업 전 안전점검회의(TBM) 일지</h1></div>
         <table class="tb-appr"><tr><th rowspan="2" class="tb-apl">결<br>재</th>${APPROVERS.map(a => `<th>${a}</th>`).join('')}</tr><tr>${APPROVERS.map(() => '<td></td>').join('')}</tr></table>
       </div>
       <table class="tb-t">
@@ -543,7 +543,7 @@ const TBM = (() => {
         <tr>${slots.slice(3, 6).map(sigCell).join('')}</tr>
       </table>
       ${selfNotes.length ? `<div class="tb-self">안전의식 자가진단(8문항): ${selfNotes.join(' / ')}</div>` : ''}
-      <div class="tb-foot">작성: ${esc(L.org)} · 안전교육 앱</div>
+      <div class="tb-foot"><span>사람인안전지도사사무소</span><span>안전지도 앱으로 작성</span></div>
     </div>`;
   }
   async function build(t) {

@@ -1,16 +1,63 @@
 {
-  "name": "안전교육",
-  "short_name": "안전교육",
-  "description": "건설현장 고위험 작업 안전교육 · 자율점검 · 서명 확인",
+  "id": "./",
+  "name": "안전지도",
+  "short_name": "안전지도",
+  "description": "사람인안전지도사사무소 · 건설현장 안전교육 · TBM 일지 · 자율점검 · 서명 확인",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#f4f6f9",
-  "theme_color": "#0f4c81",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
   "lang": "ko",
   "icons": [
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    {
+      "src": "icons/app-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/app-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "안전교육 시작",
+      "short_name": "안전교육",
+      "url": "./#/new",
+      "icons": [
+        {
+          "src": "icons/app-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "TBM 시작",
+      "short_name": "TBM",
+      "url": "./#/tbm/new",
+      "icons": [
+        {
+          "src": "icons/app-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
   ]
 }

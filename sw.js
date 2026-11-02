@@ -1,7 +1,8 @@
 // 오프라인 지원: 앱 파일을 저장해 두고, 인터넷이 없어도 열리게 한다.
-const CACHE = 'safety-edu-v1.4.0';
+const CACHE = 'safety-edu-v1.5.0';
 const CORE = [
-  './', 'index.html', 'css/app.css', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png',
+  './', 'index.html', 'css/app.css', 'manifest.webmanifest', 'icons/app-192.png', 'icons/app-512.png',
+  'icons/maskable-192.png', 'icons/maskable-512.png', 'icons/apple-180.png', 'icons/favicon-64.png', 'img/brand-logo.png', 'img/brand-mark.png',
   'js/codec.js', 'js/db.js', 'js/sig.js', 'js/qr.js', 'js/report.js', 'js/registry.js', 'js/lock.js', 'js/pages.js', 'js/tbm.js', 'js/app.js', 'data/topics.json',
   'vendor/qrcode.js', 'vendor/jsQR.js', 'vendor/html2canvas.min.js', 'vendor/jspdf.umd.min.js', 'vendor/jszip.min.js'
 ];

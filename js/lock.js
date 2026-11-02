@@ -20,8 +20,9 @@ const Lock = (() => {
   function gate(root, h, onOpen) {
     document.body.classList.add('locked');
     root.innerHTML = `<section class="lockbox">
-      <img src="icons/icon-192.png" alt="">
-      <h1>안전교육</h1>
+      <img src="icons/app-192.png" alt="">
+      <h1>안전지도</h1>
+      <p class="lock-org">사람인안전지도사사무소</p>
       <p>비밀번호 6자리를 입력하세요.</p>
       <form id="lockf">
         <input id="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" aria-label="비밀번호 6자리">
