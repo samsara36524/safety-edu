@@ -82,7 +82,7 @@ const Report = (() => {
       flow.add(`<h1 class="rp-h1">안전교육 결과</h1>`);
       flow.add(`<table class="rp-info">
         <tr><th>현장명</th><td>${esc(session.site)}</td><th>교육장소</th><td>${esc(session.place)}</td></tr>
-        <tr><th>교육일시</th><td>${esc(fmtDate(session.date))}</td><th>지도요원(점검자)</th><td>${esc(session.inspector)}</td></tr>
+        <tr><th>교육일시</th><td>${esc(fmtDate(session.date))}</td><th>지도요원(점검자)</th><td>${esc(INSPECTOR)}</td></tr>
         <tr><th>교육내용</th><td colspan="3">${topics.map(t => `[${esc(t.cat)}] ${esc(t.title)} ${esc(t.suffix || '')}`).join('<br>')}</td></tr>
         <tr><th>참석인원</th><td colspan="3">${session.workers.length}명</td></tr>
       </table>`);
@@ -105,7 +105,7 @@ const Report = (() => {
       for (const t of topics) {
         flow.newPage();
         flow.add(`<h2 class="rp-h2"><span class="rp-cat">${esc(t.cat)}</span>${esc(t.title)} 사고예방 자율점검표</h2>`);
-        flow.add(`<div class="rp-meta"><span>점검자: <b>${esc(session.inspector)}</b></span><span>점검일자: <b>${esc(fmtDate(session.date, false))}</b></span><span>점검장소: <b>${esc(session.place || session.site)}</b></span></div>`);
+        flow.add(`<div class="rp-meta"><span>점검자: <b>${esc(INSPECTOR)}</b></span><span>점검일자: <b>${esc(fmtDate(session.date, false))}</b></span><span>점검장소: <b>${esc(session.place || session.site)}</b></span></div>`);
         const judg = (session.judg || {})[t.id] || {};
         flow.table(`<tr><th style="width:12%">구분</th><th>자율점검 항목</th><th class="rp-jh">양호</th><th class="rp-jh">미흡</th><th class="rp-jh">해당<br>없음</th></tr>`,
           checklistRows(t, judg));

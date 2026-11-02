@@ -127,7 +127,7 @@ async function home() {
     <div class="grid2">
       <a class="tile" href="#/topics"><b>교육자료</b><span>작업별 안전수칙 보기·추가</span></a>
       <a class="tile" href="#/records"><b>교육 기록</b><span>지난 교육 결과 다시 저장</span></a>
-      <a class="tile" href="#/settings"><b>설정</b><span>지도요원 이름·저장 폴더</span></a>
+      <a class="tile" href="#/settings"><b>설정</b><span>저장 폴더·자료 백업</span></a>
       <a class="tile" href="#/help"><b>사용 방법</b><span>현장·원격 교육 진행 순서</span></a>
     </div>`;
 }
@@ -287,7 +287,7 @@ async function importTopics() {
 
 // ---------- 교육 진행 ----------
 async function newSession() {
-  const inspector = (await DB.get('kv', 'inspector').catch(() => '')) || '';
+  const inspector = INSPECTOR;
   const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
   const s = { id: uid(10), created: Date.now(), site: '', place: '', inspector, date: d.toISOString().slice(0, 16), topics: [], topicData: [], judg: {}, workers: [], photo: '', step: 0, done: false };
   await DB.put('sessions', s);
@@ -314,7 +314,7 @@ async function sessionView(id, stepStr) {
       <label>현장명 <input name="site" required value="${esc(s.site)}" placeholder="예: OO빌딩 신축공사"></label>
       <div class="grid2"><label>교육장소 <input name="place" value="${esc(s.place)}" placeholder="예: 3층 슬래브"></label>
       <label>교육일시 <input name="date" type="datetime-local" value="${esc(s.date)}"></label></div>
-      <label>지도요원(점검자) <input name="inspector" value="${esc(s.inspector)}"></label>
+      <label>지도요원(점검자) <input value="${esc(INSPECTOR)}" readonly class="fixed"></label>
       <fieldset><legend>교육할 작업 선택 <small>(여러 개 선택 가능)</small></legend>
       ${Object.entries(cats).map(([g, list]) => `<div class="chk-group"><b>${esc(g)}</b>${list.map(t => `<label class="chip"><input type="checkbox" name="t" value="${t.id}" ${s.topics.includes(t.id) ? 'checked' : ''}><span>${esc(t.title)}</span></label>`).join('')}</div>`).join('')}
       </fieldset></form>` + nav(null, 1);
@@ -324,9 +324,8 @@ async function sessionView(id, stepStr) {
       const ids = fd.getAll('t');
       if (!ids.length) { toast('교육할 작업을 1개 이상 선택하세요.'); return false; }
       if (s.workers.length && ids.join() !== s.topics.join() && !confirm('작업을 바꾸면 이미 받은 서명과 내용이 달라질 수 있습니다. 계속할까요?')) return false;
-      Object.assign(s, { site: fd.get('site').trim(), place: fd.get('place').trim(), date: fd.get('date'), inspector: fd.get('inspector').trim(), topics: ids });
+      Object.assign(s, { site: fd.get('site').trim(), place: fd.get('place').trim(), date: fd.get('date'), inspector: INSPECTOR, topics: ids });
       s.topicData = ids.map(i => JSON.parse(JSON.stringify(Store.byId[i])));
-      if (s.inspector) DB.put('kv', s.inspector, 'inspector');
       await saveSession(s);
     });
     return;
@@ -475,7 +474,7 @@ async function sessionView(id, stepStr) {
     const canDir = 'showDirectoryPicker' in window;
     const dir = canDir ? await DB.get('kv', 'dir').catch(() => null) : null;
     body.innerHTML = `<div class="summary">
-        <div><b>${esc(s.site)}</b><span>${esc(Report.fmtDate(s.date))} · ${esc(s.inspector)}</span></div>
+        <div><b>${esc(s.site)}</b><span>${esc(Report.fmtDate(s.date))} · ${esc(INSPECTOR)}</span></div>
         <div class="stats"><span>작업 <b>${s.topicData.length}</b></span><span>판정 <b>${judged}/${total}</b></span><span>미흡 <b>${bad}</b></span><span>서명 <b>${s.workers.length}/${MAX_WORKERS}</b></span><span>사진 <b>${s.photo ? 1 : 0}</b></span></div>
         ${warn.length ? `<ul class="warn">${warn.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
       </div>
@@ -660,18 +659,16 @@ async function records() {
   });
 }
 async function settings() {
-  const insp = (await DB.get('kv', 'inspector').catch(() => '')) || '';
   const canDir = 'showDirectoryPicker' in window;
   const dir = canDir ? await DB.get('kv', 'dir').catch(() => null) : null;
   view().innerHTML = `<div class="bar"><h1>설정</h1></div>
-    <form class="form" id="sf"><label>지도요원 이름 (기본값) <input name="i" value="${esc(insp)}"></label><button class="btn primary">저장</button></form>
+    <h2 class="h">지도요원</h2><p><b>${esc(INSPECTOR)}</b> <small>(고정)</small></p>
     <h2 class="h">결과 저장 폴더</h2>
     ${canDir ? `<p>${dir ? `현재 폴더: <b>${esc(dir.name)}</b>` : '아직 지정하지 않았습니다.'}</p><button class="btn" id="pick">폴더 지정</button>`
       : '<p class="hint">이 기기의 브라우저는 폴더 지정을 지원하지 않습니다. 결과 화면에서 ZIP 저장(다운로드 폴더) 또는 공유(구글드라이브·원드라이브 등 원하는 폴더)를 이용하세요.</p>'}
     <h2 class="h">교육자료 백업</h2>
     <div class="row"><button class="btn ghost" id="exp">내가 추가한 자료 내보내기</button><button class="btn ghost" id="imp">가져오기</button></div>
     <h2 class="h">정보</h2><p class="hint">안전교육 v${APP_VERSION} · 교육자료 ${Store.topics.length}종 · 서버 없이 이 기기에만 기록이 저장됩니다. 기기를 바꾸거나 브라우저 데이터를 지우면 기록이 사라지므로, 결과는 반드시 저장해 두세요.</p>`;
-  $('#sf').onsubmit = async e => { e.preventDefault(); await DB.put('kv', new FormData(e.target).get('i').trim(), 'inspector'); toast('저장했습니다.'); };
   if ($('#pick')) $('#pick').onclick = async () => {
     try { const d = await window.showDirectoryPicker({ id: 'safety-edu', mode: 'readwrite' }); await DB.put('kv', d, 'dir'); settings(); } catch (e) { /* 취소 */ }
   };
