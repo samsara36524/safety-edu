@@ -88,6 +88,9 @@ js/sig.js             서명 패드와 서명 압축
 js/codec.js           링크·QR용 데이터 압축
 js/qr.js              QR 생성·카메라 스캔
 js/db.js              기기 내 저장소(IndexedDB)
+js/registry.js        현장·근로자 등록부, 이름별 이전 서명, 검색
+js/lock.js            6자리 비밀번호 잠금
+js/pages.js           페이지 자료(PDF·이미지) 등록과 전체화면 보기
 data/topics.json      기본 교육자료 18종 (원본: 안전교육자료.pdf)
 data/extra.json       추가 배포용 교육자료
 img/                  사진·예방 그림, img/src/ 원본 페이지
