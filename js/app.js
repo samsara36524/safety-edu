@@ -82,6 +82,15 @@ function pickFile(accept, capture) {
     i.click();
   });
 }
+function pickFiles(accept, multiple, capture) {
+  return new Promise(resolve => {
+    const i = document.createElement('input');
+    i.type = 'file'; i.accept = accept; i.multiple = !!multiple; if (capture) i.capture = capture;
+    i.onchange = () => resolve([...i.files]);
+    i.click();
+  });
+}
+const DEFAULT_WORKER = ['교육 내용을 듣고 이해했으며, 안전수칙을 지키겠습니다.'];
 const dataUrlToBlob = d => fetch(d).then(r => r.blob());
 const catClass = c => ({ '추락': 'c-fall', '충돌': 'c-hit', '맞음': 'c-hit', '붕괴': 'c-col', '화재': 'c-fire' }[String(c).split('·')[0]] || 'c-etc');
 
@@ -91,6 +100,7 @@ function topicHTML(t, opt = {}) {
   return `<article class="topic">
     <h2 class="t-title"><span class="cat ${catClass(t.cat)}">${esc(t.cat)}</span>${esc(t.title)} <small>${esc(t.suffix || '')}</small></h2>
     ${t.desc ? `<p class="t-desc">${esc(t.desc).replace(/\n/g, '<br>')}</p>` : ''}
+    ${Pages.viewHTML(t)}
     ${imgOK(t.photo) ? `<figure class="t-photo"><img src="${t.photo}" alt="" loading="lazy"><figcaption>${esc(t.photoCap || '')}</figcaption></figure>` : ''}
     ${t.cases && t.cases.length ? `<section class="t-sec cases"><h3>사고사례</h3><ol>${t.cases.map((c, i) => `<li><b>사례${i + 1}</b> ${esc(c)}</li>`).join('')}</ol></section>` : ''}
     ${imgOK(t.illust) ? `<figure class="t-illust"><img src="${t.illust}" alt="" loading="lazy">${(t.illustCap || []).length ? `<figcaption>${t.illustCap.map(esc).join('<br>')}</figcaption>` : ''}</figure>` : ''}
@@ -108,8 +118,11 @@ function checklistHTML(t) {
     <h3 class="cl-sec">${esc(sec.sec)}</h3>
     <ul class="cl-list">${sec.items.map(it => `<li class="${it.key ? 'key' : ''}"><b>${esc(it.n)}.</b> ${esc(it.t)}${it.note ? `<div class="note">${esc(it.note)}</div>` : ''}</li>`).join('')}</ul>`).join('');
 }
-function bindTopicButtons(root) {
-  $$('[data-cl]', root).forEach(b => b.onclick = () => modal(checklistHTML(Store.byId[b.dataset.cl] || {}), { wide: true }));
+function bindTopicButtons(root, topics = []) {
+  const find = id => topics.find(t => t.id === id) || Store.byId[id] || {};
+  $$('[data-cl]', root).forEach(b => b.onclick = () => modal(checklistHTML(find(b.dataset.cl)), { wide: true }));
+  $$('[data-slides]', root).forEach(b => b.onclick = () => Pages.show(find(b.dataset.slides).pages, 0));
+  $$('.t-pages [data-slide]', root).forEach(img => img.onclick = () => Pages.show(find(img.closest('.t-pages').querySelector('[data-slides]').dataset.slides).pages, +img.dataset.slide));
 }
 
 // ---------- 화면: 홈 ----------
@@ -146,11 +159,11 @@ function topicsList() {
   Store.topics.forEach(t => { const g = t.custom ? '내가 추가한 자료' : (t.extra ? '추가 자료' : String(t.cat).split('·')[0]); (groups[g] = groups[g] || []).push(t); });
   view().innerHTML = `
     <div class="bar"><h1>교육자료</h1>
-      <div class="row"><a class="btn primary" href="#/edit/new">＋ 새 교육자료</a><button class="btn ghost" id="imp">가져오기</button><button class="btn ghost" id="exp">내보내기</button></div></div>
+      <div class="row"><a class="btn primary" href="#/edit/newpages">＋ 페이지 자료 등록</a><a class="btn" href="#/edit/new">＋ 새 교육자료</a><button class="btn ghost" id="imp">가져오기</button><button class="btn ghost" id="exp">내보내기</button></div></div>
     ${Object.entries(groups).map(([g, list]) => `<h2 class="h">${esc(g)}</h2><div class="cards">${list.map(t => `
       <a class="card topic-card" href="#/topic/${t.id}">
-        ${t.illust ? `<img src="${t.illust}" alt="" loading="lazy">` : '<div class="noimg">자료</div>'}
-        <div><b><span class="cat ${catClass(t.cat)}">${esc(t.cat)}</span>${esc(t.title)}</b><span>${esc((t.rules || [])[0] || '')}</span></div></a>`).join('')}</div>`).join('')}`;
+        ${t.illust || (t.pages || [])[0] ? `<img src="${t.illust || t.pages[0].img}" alt="" loading="lazy">` : '<div class="noimg">자료</div>'}
+        <div><b><span class="cat ${catClass(t.cat)}">${esc(t.cat)}</span>${esc(t.title)}</b><span>${t.pages && t.pages.length ? `페이지 자료 ${t.pages.length}쪽` : esc((t.rules || [])[0] || '')}</span></div></a>`).join('')}</div>`).join('')}`;
   $('#imp').onclick = importTopics;
   $('#exp').onclick = () => exportTopics(Store.topics.filter(t => t.custom));
 }
@@ -193,10 +206,11 @@ function textToChecklist(text) {
 }
 async function editor(arg) {
   let t, isNew = false;
+  const pagesMode0 = arg === 'newpages';
   if (arg.startsWith('new')) {
     isNew = true;
     const from = arg.split('~')[1];
-    t = from && Store.byId[from] ? JSON.parse(JSON.stringify(Store.byId[from])) : { cat: '추락', suffix: '작업 시 안전수칙' };
+    t = from && Store.byId[from] ? JSON.parse(JSON.stringify(Store.byId[from])) : pagesMode0 ? { cat: '기타', suffix: '', pages: [] } : { cat: '추락', suffix: '작업 시 안전수칙' };
     if (from) t.title = (t.title || '') + ' (사본)';
     // 기본 자료의 그림 경로는 그대로 사용
     t.id = 'c-' + uid(6); delete t.extra; t.custom = true;
@@ -206,9 +220,14 @@ async function editor(arg) {
     t = JSON.parse(JSON.stringify(t));
   }
   const cats = [...new Set(Store.topics.map(x => x.cat))];
-  view().innerHTML = `<div class="bar"><a class="btn ghost" href="#/topics">← 목록</a><h1>${isNew ? '새 교육자료' : '교육자료 수정'}</h1></div>
+  t.pages = t.pages || [];
+  const pagesMode = pagesMode0 || t.pages.length > 0;
+  view().innerHTML = `<div class="bar"><a class="btn ghost" href="#/topics">← 목록</a><h1>${isNew ? (pagesMode ? '페이지 자료 등록' : '새 교육자료') : '교육자료 수정'}</h1></div>
   <form class="form" id="ef">
-    <label>작업명 <input name="title" required value="${esc(t.title)}" placeholder="예: 밀폐공간"></label>
+    <label>${pagesMode ? '자료 제목' : '작업명'} <input name="title" required value="${esc(t.title || '')}" placeholder="${pagesMode ? '예: 동절기 한랭질환 예방' : '예: 밀폐공간'}"></label>
+    <fieldset><legend>교육 페이지 ${pagesMode ? '' : '<small>(선택)</small>'}</legend><div id="pg-box"></div></fieldset>
+    ${pagesMode ? `<label>근로자 확인 항목 <small>(한 줄에 하나씩, 근로자가 체크하고 서명. 비우면 "${esc(DEFAULT_WORKER[0])}")</small><textarea name="worker" rows="3">${esc((t.worker || []).join('\n'))}</textarea></label>
+    <details class="more"><summary>추가 정보 (선택: 재해유형·개요·핵심수칙·자율점검표 등)</summary>` : ''}
     <div class="grid2">
       <label>재해유형 <input name="cat" list="cats" value="${esc(t.cat)}" placeholder="추락·충돌·맞음·붕괴·화재 등"><datalist id="cats">${cats.map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
       <label>제목 뒤 문구 <input name="suffix" value="${esc(t.suffix || '')}"></label>
@@ -222,17 +241,23 @@ async function editor(arg) {
     <label>사고사례 <small>(한 줄에 하나씩)</small><textarea name="cases" rows="3">${esc((t.cases || []).join('\n'))}</textarea></label>
     <label>그림 설명 <small>(한 줄에 하나씩)</small><textarea name="illustCap" rows="2">${esc((t.illustCap || []).join('\n'))}</textarea></label>
     <label>핵심 안전수칙 <small>(한 줄에 하나씩)</small><textarea name="rules" rows="3">${esc((t.rules || []).join('\n'))}</textarea></label>
-    <label>근로자는 이것만은 지켜야 합니다 <small>(한 줄에 하나씩, 근로자가 체크하는 항목)</small><textarea name="worker" rows="3">${esc((t.worker || []).join('\n'))}</textarea></label>
+    ${pagesMode ? '' : `<label>근로자는 이것만은 지켜야 합니다 <small>(한 줄에 하나씩, 근로자가 체크하는 항목)</small><textarea name="worker" rows="3">${esc((t.worker || []).join('\n'))}</textarea></label>`}
     <label>교육 영상 링크 <input name="video" type="url" value="${esc(t.video || '')}" placeholder="https://youtu.be/..."></label>
     <label>자율점검표
       <small># 으로 시작하면 구분, ! 로 시작하면 핵심항목, * 로 시작하면 바로 위 항목의 참고 설명</small>
       <textarea name="checklist" rows="12" placeholder="# 사전 확인&#10;! 작업계획서를 작성한다.&#10;* 2m 이상 작업 시&#10;# 작업 안전&#10;안전모를 착용한다.">${esc(checklistToText(t.checklist))}</textarea></label>
+    ${pagesMode ? '</details>' : ''}
     <div class="row sticky-actions">
       <button class="btn primary" type="submit">저장</button>
       ${!isNew ? '<button class="btn danger" type="button" id="del">삭제</button>' : ''}
     </div>
   </form>`;
   const f = $('#ef');
+  const drawPages = () => {
+    $('#pg-box').innerHTML = Pages.editorHTML(t.pages);
+    Pages.bindEditor($('#pg-box'), t.pages, drawPages, { pickFiles, readImage, toast });
+  };
+  drawPages();
   $$('[data-pick]', f).forEach(b => b.onclick = async () => {
     const file = await pickFile('image/*'); if (!file) return;
     t[b.dataset.pick] = await readImage(file, 1400, 0.82);
@@ -249,8 +274,12 @@ async function editor(arg) {
       worker: lines(fd.get('worker')), checklist: textToChecklist(fd.get('checklist')), custom: true, updated: Date.now()
     });
     delete t.src;
-    if (!t.worker.length) { toast('근로자 확인 항목을 1개 이상 입력하세요.'); return; }
-    await DB.put('topics', t);
+    if (pagesMode && !t.pages.length) { toast('교육 페이지를 1쪽 이상 추가하세요.'); return; }
+    if (!t.worker.length) {
+      if (!pagesMode) { toast('근로자 확인 항목을 1개 이상 입력하세요.'); return; }
+      t.worker = DEFAULT_WORKER.slice();
+    }
+    try { await DB.put('topics', t); } catch (err) { toast('저장하지 못했습니다(기기 저장 공간 부족 등): ' + err.message, 5000); return; }
     await loadTopics();
     toast('저장했습니다.');
     location.hash = '#/topic/' + t.id;
@@ -278,7 +307,8 @@ async function importTopics() {
     if (!Array.isArray(data)) data = [data];
     let n = 0;
     for (const t of data) {
-      if (!t.title || !Array.isArray(t.worker)) continue;
+      if (!t.title || !(Array.isArray(t.worker) || Array.isArray(t.pages))) continue;
+      if (!Array.isArray(t.worker) || !t.worker.length) t.worker = DEFAULT_WORKER.slice();
       if (!t.id || Store.byId[t.id] && !Store.byId[t.id].custom) t.id = 'c-' + uid(6);
       t.custom = true; await DB.put('topics', t); n++;
     }
@@ -351,17 +381,17 @@ async function sessionView(id, stepStr) {
   if (step === 1) {
     body.innerHTML = `<div class="tabs">${s.topicData.map((t, i) => `<button class="tab ${i ? '' : 'on'}" data-i="${i}">${esc(t.title)}</button>`).join('')}</div>
       <div id="tcontent"></div>` + nav(0, 2);
-    const show = i => { $('#tcontent').innerHTML = topicHTML(s.topicData[i]); bindTopicButtons($('#tcontent')); $$('.tab', body).forEach((b, k) => b.classList.toggle('on', k === i)); };
+    const show = i => { $('#tcontent').innerHTML = topicHTML(s.topicData[i]); bindTopicButtons($('#tcontent'), s.topicData); $$('.tab', body).forEach((b, k) => b.classList.toggle('on', k === i)); };
     $$('.tab', body).forEach(b => b.onclick = () => show(+b.dataset.i));
     show(0); bindNav();
     return;
   }
 
   if (step === 2) {
-    const total = s.topicData.reduce((n, t) => n + t.checklist.reduce((m, sec) => m + sec.items.length, 0), 0);
+    const total = s.topicData.reduce((n, t) => n + (t.checklist || []).reduce((m, sec) => m + sec.items.length, 0), 0);
     body.innerHTML = `<p class="hint">각 항목을 <b>양호 / 미흡 / 해당없음</b> 으로 판정하세요. 미흡이면 메모와 사진을 남길 수 있습니다. 파란 글씨는 핵심 항목입니다.</p>
       <div class="progress"><span id="pg"></span></div>
-      ${s.topicData.map(t => `<section class="cl" data-t="${t.id}">
+      ${s.topicData.map(t => !(t.checklist || []).length ? `<section class="cl"><h2>${esc(t.title)}</h2><p class="hint">이 자료에는 자율점검표가 없습니다.</p></section>` : `<section class="cl" data-t="${t.id}">
         <div class="bar"><h2>${esc(t.title)} 자율점검표</h2><button class="btn ghost sm" data-allgood="${t.id}">미판정 → 모두 양호</button></div>
         ${t.checklist.map(sec => `<h3 class="cl-sec">${esc(sec.sec)}</h3>${sec.items.map(it => {
           const k = `${sec.sec}|${it.n}`; const j = ((s.judg[t.id] || {})[k]) || {};
@@ -375,7 +405,7 @@ async function sessionView(id, stepStr) {
       </section>`).join('')}` + nav(1, 3);
     const upd = () => {
       const n = Object.values(s.judg).reduce((a, o) => a + Object.values(o).filter(x => x.v).length, 0);
-      $('#pg').style.width = (n / total * 100) + '%'; $('#pg').textContent = `${n} / ${total}`;
+      $('#pg').style.width = (total ? n / total * 100 : 100) + '%'; $('#pg').textContent = `${n} / ${total}`;
     };
     const J = (t, k) => { s.judg[t] = s.judg[t] || {}; return (s.judg[t][k] = s.judg[t][k] || {}); };
     $$('.cl-item', body).forEach(el => {
@@ -531,7 +561,7 @@ async function sessionView(id, stepStr) {
   }
 
   if (step === 5) {
-    const total = s.topicData.reduce((n, t) => n + t.checklist.reduce((m, sec) => m + sec.items.length, 0), 0);
+    const total = s.topicData.reduce((n, t) => n + (t.checklist || []).reduce((m, sec) => m + sec.items.length, 0), 0);
     const judged = Object.values(s.judg).reduce((a, o) => a + Object.values(o).filter(x => x.v).length, 0);
     const bad = Object.values(s.judg).reduce((a, o) => a + Object.values(o).filter(x => x.v === 'b').length, 0);
     const warn = [];
@@ -618,7 +648,7 @@ async function saveToDir(folder, files, pickNew) {
 async function inviteLink(s, mode) {
   const builtin = s.topicData.filter(t => !t.custom).map(t => t.id);
   // 내가 추가한 자료는 글 내용만 링크에 담는다 (사진·그림 제외)
-  const c = s.topicData.filter(t => t.custom).map(t => ({ i: t.id, ti: t.title, ca: t.cat, su: t.suffix, de: t.desc, cs: t.cases, ru: t.rules, wo: t.worker, v: t.video }));
+  const c = s.topicData.filter(t => t.custom).map(t => ({ i: t.id, ti: t.title, ca: t.cat, su: t.suffix, de: t.desc, cs: t.cases, ru: t.rules, wo: t.worker, v: t.video, pg: (t.pages || []).length }));
   // 이 현장에 등록된 근로자 이름(최근 40명)을 담아, 근로자가 자기 이름을 검색해 고를 수 있게 한다
   const w = (await Registry.people(s.site)).slice(0, 40);
   const k = await Lock.current();
@@ -658,13 +688,13 @@ async function workerView(code) {
   let p;
   try { p = await Codec.unpack(code); } catch (e) { view().innerHTML = `<p class="err">교육 링크가 올바르지 않습니다. (${esc(e.message)})</p>`; return; }
   const topics = [...(p.t || []).map(id => Store.byId[id]).filter(Boolean),
-    ...(p.c || []).map(c => ({ id: c.i, title: c.ti, cat: c.ca, suffix: c.su, desc: c.de, cases: c.cs, rules: c.ru, worker: c.wo, video: c.v }))];
+    ...(p.c || []).map(c => ({ id: c.i, title: c.ti, cat: c.ca, suffix: c.su, desc: c.de, cases: c.cs, rules: c.ru, worker: c.wo, video: c.v, pg: c.pg }))];
   const doneKey = 'done-' + p.s;
   let prev = null; try { prev = JSON.parse(localStorage.getItem(doneKey)); } catch (e) { /* 없음 */ }
   view().innerHTML = `<section class="hero small"><h1>안전교육</h1><p><b>${esc(p.n)}</b>${p.p ? ' · ' + esc(p.p) : ''}<br>${esc(Report.fmtDate(p.d))}</p>
       <p class="hint">${p.m === 'r' ? '아래 교육 내용을 끝까지 읽고, 맨 아래에서 확인·서명한 뒤 <b>결과 보내기</b>로 지도요원에게 회신해 주세요.' : '아래 교육 내용을 읽고, 맨 아래에서 확인·서명하세요.'}</p>
       ${prev ? '<button class="btn" id="again">이전에 제출한 결과 다시 보기</button>' : ''}</section>
-    ${topics.map(t => topicHTML(t, { checklist: false })).join('')}
+    ${topics.map(t => topicHTML(t, { checklist: false }) + (t.pg ? `<p class="hint pg-note">「${esc(t.title)}」 교육자료 ${t.pg}쪽은 지도요원이 화면으로 설명합니다.</p>` : '')).join('')}
     <h2 class="h">확인 및 서명</h2>${workerConfirmHTML(topics)}
     <div id="wres"></div>`;
   const pad = Sig.pad($('canvas.sigpad'));
@@ -848,6 +878,11 @@ function help() {
     <li>새 교육의 현장명 칸에 글자나 초성(예: ㅅㅇ)을 넣으면 등록된 현장이 나오고, 고르면 교육장소도 채워집니다.</li>
     <li>서명 단계의 <b>이 현장 등록 근로자</b> 이름을 누르면 이름이 입력된 서명 창이 열립니다. 이름 칸에서도 검색됩니다.</li>
     <li>QR·원격 링크를 받은 근로자도 자기 이름을 검색해서 고를 수 있습니다.</li></ol>
+  <h2>페이지 자료 등록</h2><ol>
+    <li>교육자료 → <b>[＋ 페이지 자료 등록]</b> → 제목을 넣고 <b>PDF 추가</b>(쪽마다 나뉨), <b>이미지 추가</b>(여러 장), <b>카메라로 촬영</b> 중에서 페이지를 넣습니다.</li>
+    <li>↑↓로 순서를 바꾸고, 쪽마다 설명을 붙일 수 있습니다. 근로자 확인 항목과 자율점검표는 선택입니다.</li>
+    <li>새 교육의 작업 선택에서 <b>내가 추가한 자료</b>로 고르면, 교육 단계에서 <b>▶ 전체화면으로 보기</b>로 넘겨 가며 설명합니다(좌우로 밀기, 화면 좌우 누르기).</li>
+    <li>결과 PDF에는 교육한 페이지가 작은 그림으로 함께 들어갑니다. 원격 링크로는 페이지 그림이 전달되지 않습니다.</li></ol>
   <h2>교육자료 추가</h2><ol>
     <li>교육자료 → <b>[새 교육자료]</b> 또는 기존 자료에서 <b>[복사해서 새 자료]</b>.</li>
     <li>점검표는 줄마다 한 항목. <code># 구분</code>, <code>! 핵심항목</code>, <code>* 참고설명</code> 규칙을 씁니다.</li>

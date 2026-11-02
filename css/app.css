@@ -275,3 +275,37 @@ body.locked .nav { display: none; }
 .shake { animation: shake .35s; }
 @keyframes shake { 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
 .pinform { max-width: 360px; }
+
+/* 페이지 자료 */
+.pg-edit .row { flex-wrap: wrap; }
+.pg-list { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-direction: column; gap: 8px; }
+.pg-list li { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 6px; }
+.pg-list img { width: 84px; height: 84px; object-fit: contain; background: #f1f3f5; border-radius: 6px; cursor: zoom-in; flex: none; }
+.pg-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.pg-meta input { width: 100%; box-sizing: border-box; }
+.pg-btns { display: flex; gap: 4px; flex: none; }
+.pg-btns button { width: 36px; height: 36px; border: 1px solid var(--line); border-radius: 8px; background: #fff; font-size: 16px; cursor: pointer; }
+.pg-btns button:disabled { opacity: .35; cursor: default; }
+details.more { border: 1px dashed var(--line); border-radius: 10px; padding: 8px 12px; }
+details.more > summary { cursor: pointer; font-weight: 600; color: var(--primary-2); }
+details.more[open] { display: flex; flex-direction: column; gap: 12px; }
+.t-pages { grid-column: 1 / -1; margin: 12px 0; }
+.t-pages .bar h3 { margin: 0; }
+.pg-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin-top: 8px; }
+.pg-view figure { margin: 0; }
+.pg-view img { width: 100%; aspect-ratio: 3 / 4; object-fit: contain; background: #f1f3f5; border: 1px solid var(--line); border-radius: 8px; cursor: zoom-in; }
+.pg-view figcaption { font-size: 13px; color: var(--muted); text-align: center; }
+.pg-note { background: #fff8e1; border-radius: 8px; padding: 8px 12px; }
+.slides { position: fixed; inset: 0; z-index: 80; background: #111; display: flex; flex-direction: column; align-items: center; justify-content: center; user-select: none; }
+.slides img { max-width: 100%; max-height: calc(100% - 40px); min-height: 0; object-fit: contain; touch-action: pan-y; }
+.slides .sl-cap { flex: none; height: 32px; line-height: 32px; text-align: center; color: #ddd; font-size: 15px; }
+.slides button { position: absolute; border: 0; background: rgba(255, 255, 255, .14); color: #fff; cursor: pointer; border-radius: 50%; }
+.slides button:disabled { opacity: .2; cursor: default; }
+.slides .sl-prev, .slides .sl-next { top: 50%; transform: translateY(-50%); width: 56px; height: 56px; font-size: 36px; line-height: 1; }
+.slides .sl-prev { left: 10px; } .slides .sl-next { right: 10px; }
+.slides .sl-close { top: 10px; right: 10px; width: 44px; height: 44px; font-size: 20px; }
+/* 보고서: 페이지 자료 */
+.rp-pages { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 10px; }
+.rp-pages figure { margin: 0; text-align: center; }
+.rp-pages img { width: 100%; height: 300px; object-fit: contain; border: 1px solid #ccc; background: #fafafa; }
+.rp-pages figcaption { font-size: 11px; color: #555; }

@@ -97,12 +97,25 @@ const Report = (() => {
         sigRows, '교육 참석자 확인 및 서명 (아래 교육 내용을 교육받고 확인하였습니다)');
       flow.add(`<div class="rp-cap">교육 내용</div>`);
       for (const t of topics) {
-        flow.add(`<div class="rp-box"><div class="rp-box-t"><span class="rp-cat">${esc(t.cat)}</span>${esc(t.title)} — 핵심 안전수칙</div>
-          ${list(t.rules)}<div class="rp-box-t2">근로자는 이것만은 지켜야 합니다</div>${list(t.worker)}</div>`);
+        const np = (t.pages || []).length;
+        flow.add(`<div class="rp-box"><div class="rp-box-t"><span class="rp-cat">${esc(t.cat)}</span>${esc(t.title)}${(t.rules || []).length ? ' — 핵심 안전수칙' : ''}${np ? ` <small>(교육자료 ${np}쪽)</small>` : ''}</div>
+          ${list(t.rules)}<div class="rp-box-t2">${np ? '근로자 확인 항목' : '근로자는 이것만은 지켜야 합니다'}</div>${list(t.worker)}</div>`);
       }
 
       // 2. 작업별 자율점검표 (원본 양식)
+      // 페이지 자료: 교육한 페이지를 작게 (한 줄에 3쪽)
       for (const t of topics) {
+        const pages = t.pages || [];
+        if (!pages.length) continue;
+        flow.newPage();
+        flow.add(`<h2 class="rp-h2"><span class="rp-cat">${esc(t.cat)}</span>${esc(t.title)} 교육자료 (${pages.length}쪽)</h2>`);
+        for (let i = 0; i < pages.length; i += 3) {
+          flow.add(`<div class="rp-pages">${pages.slice(i, i + 3).map((p, k) => `<figure><img src="${p.img}"><figcaption>${i + k + 1}쪽${p.cap ? ' · ' + esc(p.cap) : ''}</figcaption></figure>`).join('')}</div>`);
+        }
+      }
+
+      for (const t of topics) {
+        if (!(t.checklist || []).length) continue;
         flow.newPage();
         flow.add(`<h2 class="rp-h2"><span class="rp-cat">${esc(t.cat)}</span>${esc(t.title)} 사고예방 자율점검표</h2>`);
         flow.add(`<div class="rp-meta"><span>점검자: <b>${esc(INSPECTOR)}</b></span><span>점검일자: <b>${esc(fmtDate(session.date, false))}</b></span><span>점검장소: <b>${esc(session.place || session.site)}</b></span></div>`);
