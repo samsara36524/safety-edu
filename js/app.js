@@ -461,11 +461,40 @@ async function sessionView(id, stepStr) {
       const nameIn = $('[name=name]', m.el);
       nameIn.value = preName;
       attachNameSearch(nameIn, known, s.workers.map(w => w.name));
+      // 이름에 맞는 과거 서명을 보여주고, 누르면 서명 칸에 불러온다
+      const box = document.createElement('div');
+      box.className = 'pastsig';
+      $('.sigwrap', m.el).before(box);
+      let used = null; // 불러온 과거 서명 코드 (새로 쓰기 시작하면 지움)
+      const mark = () => $$('[data-g]', box).forEach(b => b.classList.toggle('on', b.dataset.g === used));
+      $('canvas', m.el).addEventListener('pointerdown', () => { if (used) { pad.clear(); used = null; mark(); } }, true);
+      $('[data-clr]', m.el).addEventListener('click', () => { used = null; mark(); });
+      const showPast = async () => {
+        const name = nameIn.value.trim();
+        const list = name ? await Registry.sigs(name) : [];
+        if (used && !list.some(x => x.g === used)) { pad.clear(); used = null; }
+        box.innerHTML = list.length ? `<span>${esc(name)} 님의 이전 서명 <small>(눌러서 불러오기)</small></span>
+          <div class="pastlist">${list.map(x => `<div class="pitem"><button type="button" data-g="${x.g}"><img src="${Sig.toImage(x.g, 250, 100)}" alt="이전 서명"><small>${esc(x.site || '')} · ${esc(Report.fmtDate(new Date(x.at).toISOString(), false))}</small></button><button type="button" class="pdel" data-rm="${x.g}" title="이 서명 삭제">✕</button></div>`).join('')}</div>` : '';
+        $$('[data-g]', box).forEach(b => b.onclick = () => { pad.load(b.dataset.g); used = b.dataset.g; mark(); });
+        $$('[data-rm]', box).forEach(b => b.onclick = async () => {
+          if (!confirm('이 이전 서명을 삭제할까요?')) return;
+          await Registry.removeSig(name, b.dataset.rm);
+          showPast();
+        });
+        mark();
+      };
+      nameIn.addEventListener('input', showPast);
+      nameIn.addEventListener('change', showPast);
+      showPast();
       bindWorkerForm(m.el, pad, async ({ name, sig }) => {
         if (s.workers.some(w => w.name === name) && !confirm(`${name} 님은 이미 서명했습니다. 한 번 더 받을까요?`)) return;
-        s.workers.push({ name, sig, at: Math.floor(Date.now() / 1000), via: '현장(지도요원 기기)' });
+        const reuse = !!used && (await Registry.sigs(name)).some(x => x.g === used);
+        if (reuse) sig = used;
+        const at = Math.floor(Date.now() / 1000);
+        s.workers.push({ name, sig, at, via: reuse ? '현장(이전 서명)' : '현장(지도요원 기기)' });
         await saveSession(s);
         await Registry.addPeople(s.site, [name]);
+        await Registry.addSig(name, sig, s.site, at * 1000);
         m.close(); render(); toast(`${name} 님 서명을 저장했습니다.`);
       });
     };
@@ -676,6 +705,7 @@ async function importCode(text, expectId) {
   if (s.workers.some(w => w.name === r.n && w.at === r.a)) return { ok: false, msg: `${r.n} 님 서명은 이미 받았습니다.`, s };
   if (s.workers.length >= MAX_WORKERS) return { ok: false, msg: `서명은 ${MAX_WORKERS}명까지입니다.`, s };
   s.workers.push({ name: r.n, sig: r.g, at: r.a, via: r.m === 'r' ? '원격(링크)' : '현장(QR)' });
+  await Registry.addSig(r.n, r.g, s.site, r.a * 1000);
   await saveSession(s);
   await Registry.addPeople(s.site, [r.n]);
   return { ok: true, msg: `${r.n} 님 서명을 추가했습니다. (${s.workers.length}/${MAX_WORKERS})`, s };

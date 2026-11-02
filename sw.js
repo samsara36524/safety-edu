@@ -1,5 +1,5 @@
 // 오프라인 지원: 앱 파일을 저장해 두고, 인터넷이 없어도 열리게 한다.
-const CACHE = 'safety-edu-v1.1.1';
+const CACHE = 'safety-edu-v1.1.2';
 const CORE = [
   './', 'index.html', 'css/app.css', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png',
   'js/codec.js', 'js/db.js', 'js/sig.js', 'js/qr.js', 'js/report.js', 'js/registry.js', 'js/app.js', 'data/topics.json',

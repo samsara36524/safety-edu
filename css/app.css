@@ -251,3 +251,14 @@ code { background: #f1f3f5; padding: 1px 5px; border-radius: 4px; }
 .site .bar { margin: 0; }
 .site .bar > div:first-child { display: flex; flex-direction: column; }
 .addp input { flex: 1 1 200px; }
+
+/* 이전 서명 불러오기 */
+.pastsig:empty { display: none; }
+.pastsig { display: flex; flex-direction: column; gap: 6px; font-weight: 600; }
+.pastlist { display: flex; flex-wrap: wrap; gap: 8px; }
+.pitem { position: relative; }
+.pitem [data-g] { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px; width: 132px; background: #fff; border: 2px solid var(--line); border-radius: 10px; cursor: pointer; font: inherit; }
+.pitem [data-g] img { width: 120px; height: 48px; }
+.pitem [data-g] small { color: var(--muted); font-weight: 400; font-size: 11px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pitem [data-g].on { border-color: var(--primary-2); background: #e7f1fb; }
+.pitem .pdel { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line); background: #fff; color: var(--muted); font-size: 12px; cursor: pointer; line-height: 1; padding: 0; }

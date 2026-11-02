@@ -37,6 +37,7 @@ const Sig = (() => {
     window.addEventListener('resize', fit);
     return {
       clear() { strokes = []; redraw(); },
+      load(code) { strokes = decode(code); redraw(); },
       isEmpty() { return strokes.reduce((n, s) => n + s.length, 0) < 3; },
       strokes() { return strokes.map(s => simplify(s, 0.7)); },
       ctx

@@ -49,9 +49,31 @@ const Registry = (() => {
     const st = await site(siteName);
     return st ? Object.entries(st.people).sort((a, b) => b[1] - a[1]).map(e => e[0]) : [];
   }
-  // 처음 한 번: 기존 교육 기록에서 현장·근로자를 등록
+  // 이름별 과거 서명 (최근 5개, 같은 서명은 하나만)
+  const SIG_MAX = 5;
+  function putSig(r, name, g, site, at) {
+    const n = String(name || '').trim();
+    if (!n || !g) return;
+    r.sigs = r.sigs || {};
+    const list = (r.sigs[n] || []).filter(x => x.g !== g);
+    list.push({ g, site: site || '', at: at || Date.now() });
+    r.sigs[n] = list.sort((a, b) => b.at - a.at).slice(0, SIG_MAX);
+  }
+  async function addSig(name, g, site, at) { const r = await load(); putSig(r, name, g, site, at); await save(); }
+  async function sigs(name) { const r = await load(); return ((r.sigs || {})[String(name || '').trim()] || []).slice(); }
+  async function removeSig(name, g) {
+    const r = await load(), n = String(name || '').trim();
+    if (r.sigs && r.sigs[n]) { r.sigs[n] = r.sigs[n].filter(x => x.g !== g); if (!r.sigs[n].length) delete r.sigs[n]; await save(); }
+  }
+  // 처음 한 번: 기존 교육 기록에서 현장·근로자·서명을 등록
   async function backfill() {
     const r = await load();
+    if (!r.bs) {
+      const list = await DB.all('sessions').catch(() => []);
+      for (const s of list) for (const w of s.workers || []) putSig(r, w.name, w.sig, s.site, w.at * 1000);
+      r.bs = true;
+      await save();
+    }
     if (r.bf) return;
     const list = await DB.all('sessions').catch(() => []);
     for (const s of list) {
@@ -64,7 +86,7 @@ const Registry = (() => {
     r.bf = true;
     await save();
   }
-  return { addSite, addPeople, removePerson, removeSite, sites, site, people, backfill, norm };
+  return { addSite, addPeople, removePerson, removeSite, sites, site, people, backfill, norm, addSig, sigs, removeSig };
 })();
 
 const Search = (() => {
