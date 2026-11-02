@@ -12,7 +12,7 @@ const STEPS = ['기본정보', '교육', '점검', '서명', '사진', '결과']
 const Store = { topics: [], byId: {} };
 
 async function loadTopics() {
-  const built = await fetch('data/topics.json').then(r => r.json());
+  const built = await fetch('data/topics.json?v=' + APP_VERSION, { cache: 'no-cache' }).then(r => r.json());
   let extra = [];
   try { const r = await fetch('data/extra.json'); if (r.ok) extra = await r.json(); } catch (e) { /* 없음 */ }
   extra.forEach(t => { t.extra = true; });
