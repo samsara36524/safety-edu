@@ -621,7 +621,8 @@ async function inviteLink(s, mode) {
   const c = s.topicData.filter(t => t.custom).map(t => ({ i: t.id, ti: t.title, ca: t.cat, su: t.suffix, de: t.desc, cs: t.cases, ru: t.rules, wo: t.worker, v: t.video }));
   // 이 현장에 등록된 근로자 이름(최근 40명)을 담아, 근로자가 자기 이름을 검색해 고를 수 있게 한다
   const w = (await Registry.people(s.site)).slice(0, 40);
-  const code = await Codec.pack({ v: 1, s: s.id, n: s.site, p: s.place, d: s.date, t: builtin, c, m: mode, w });
+  const k = await Lock.current();
+  const code = await Codec.pack({ v: 1, s: s.id, n: s.site, p: s.place, d: s.date, t: builtin, c, m: mode, w, k });
   return `${APP_URL}#/w/${code}`;
 }
 // 이름 입력창에 등록 근로자 검색을 붙인다 (이미 서명한 사람은 표시만)
@@ -799,6 +800,14 @@ async function settings() {
   const dir = canDir ? await DB.get('kv', 'dir').catch(() => null) : null;
   view().innerHTML = `<div class="bar"><h1>설정</h1></div>
     <h2 class="h">지도요원</h2><p><b>${esc(INSPECTOR)}</b> <small>(고정)</small></p>
+    <h2 class="h">비밀번호</h2>
+    <p class="hint">앱과 근로자 링크를 열 때 입력하는 숫자 6자리입니다. 바꾸면 이후 보내는 QR·링크부터 새 비밀번호가 적용되고, 이미 보낸 링크는 그때의 비밀번호를 씁니다.</p>
+    <form class="form pinform" id="pinf">
+      <label>현재 비밀번호 <input name="cur" type="password" inputmode="numeric" maxlength="6" autocomplete="off"></label>
+      <label>새 비밀번호 <input name="n1" type="password" inputmode="numeric" maxlength="6" autocomplete="off"></label>
+      <label>새 비밀번호 확인 <input name="n2" type="password" inputmode="numeric" maxlength="6" autocomplete="off"></label>
+      <button class="btn" type="submit">비밀번호 변경</button>
+    </form>
     <h2 class="h">결과 저장 폴더</h2>
     ${canDir ? `<p>${dir ? `현재 폴더: <b>${esc(dir.name)}</b>` : '아직 지정하지 않았습니다.'}</p><button class="btn" id="pick">폴더 지정</button>`
       : '<p class="hint">이 기기의 브라우저는 폴더 지정을 지원하지 않습니다. 결과 화면에서 ZIP 저장(다운로드 폴더) 또는 공유(구글드라이브·원드라이브 등 원하는 폴더)를 이용하세요.</p>'}
@@ -810,6 +819,16 @@ async function settings() {
   };
   $('#exp').onclick = () => exportTopics(Store.topics.filter(t => t.custom));
   $('#imp').onclick = importTopics;
+  $('#pinf').onsubmit = async e => {
+    e.preventDefault();
+    const f = e.target, cur = f.cur.value.trim(), n1 = f.n1.value.trim(), n2 = f.n2.value.trim();
+    if (await Lock.hash(cur) !== await Lock.current()) { toast('현재 비밀번호가 맞지 않습니다.'); return; }
+    if (!Lock.valid(n1)) { toast('새 비밀번호는 숫자 6자리로 입력하세요.'); return; }
+    if (n1 !== n2) { toast('새 비밀번호 확인이 일치하지 않습니다.'); return; }
+    await Lock.setPin(n1);
+    f.reset();
+    toast('비밀번호를 변경했습니다. 잊지 않도록 따로 적어 두세요.', 4000);
+  };
 }
 function help() {
   view().innerHTML = `<div class="bar"><h1>사용 방법</h1></div><article class="help">
@@ -833,6 +852,10 @@ function help() {
     <li>교육자료 → <b>[새 교육자료]</b> 또는 기존 자료에서 <b>[복사해서 새 자료]</b>.</li>
     <li>점검표는 줄마다 한 항목. <code># 구분</code>, <code>! 핵심항목</code>, <code>* 참고설명</code> 규칙을 씁니다.</li>
     <li>[내보내기]로 다른 지도요원에게 파일을 전달하고, 받은 쪽은 [가져오기] 합니다.</li></ol>
+  <h2>비밀번호</h2><ol>
+    <li>앱을 열 때와 근로자가 QR·링크로 들어올 때 숫자 6자리 비밀번호를 입력해야 화면이 보입니다. 근로자에게는 비밀번호를 말로 알려 주세요.</li>
+    <li>한 번 입력하면 브라우저(앱)를 닫을 때까지 다시 묻지 않습니다.</li>
+    <li>설정에서 바꿀 수 있습니다. 바꾼 비밀번호를 잊으면 이 기기의 기록을 열 수 없으니 꼭 적어 두세요.</li></ol>
   <h2>앱 설치</h2><p>크롬 메뉴(⋮) → <b>홈 화면에 추가</b>(또는 앱 설치)를 누르면 앱처럼 쓸 수 있고, 인터넷이 없어도 열립니다.</p>
   </article>`;
 }
@@ -844,9 +867,18 @@ const routes = [
   [/^#\/records$/, records], [/^#\/settings$/, settings], [/^#\/help$/, help],
   [/^#\/w\/(.+)$/, workerView], [/^#\/r\/(.+)$/, importView],
 ];
+// 비밀번호가 맞아야 화면을 연다. 근로자 링크는 링크를 만든 지도요원의 비밀번호를 쓴다.
+async function needPin(h) {
+  const wm = h.match(/^#\/w\/(.+)$/);
+  if (wm) { try { return (await Codec.unpack(wm[1])).k || Lock.DEFAULT; } catch (e) { return Lock.DEFAULT; } }
+  return Lock.current();
+}
 async function route() {
   const h = location.hash || '#/';
   document.body.classList.toggle('worker', h.startsWith('#/w/'));
+  const pin = await needPin(h);
+  if (!Lock.isOpen(pin)) { Lock.gate(view(), pin, route); return; }
+  document.body.classList.remove('locked');
   $$('.nav a').forEach(a => a.classList.toggle('on', h === a.getAttribute('href') || (a.getAttribute('href') !== '#/' && h.startsWith(a.getAttribute('href')))));
   for (const [re, fn] of routes) {
     const m = h.match(re);
