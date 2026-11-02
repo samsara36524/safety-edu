@@ -128,16 +128,19 @@ function bindTopicButtons(root, topics = []) {
 // ---------- 화면: 홈 ----------
 async function home() {
   const sessions = (await DB.all('sessions').catch(() => [])).sort((a, b) => b.created - a.created);
-  const ongoing = sessions.filter(s => !s.done).slice(0, 3);
+  const ongoing = sessions.filter(s => !s.done && s.kind !== 'tbm').slice(0, 3);
+  const tbmOn = sessions.filter(s => !s.done && s.kind === 'tbm').slice(0, 3);
   view().innerHTML = `
     <section class="hero">
       <h1>안전교육</h1>
       <p>건설현장 고위험 작업 ${Store.topics.length}종 안전교육 · 자율점검 · 서명 확인</p>
-      <a class="btn big primary" href="#/new">＋ 새 교육 시작</a>
+      <div class="row center"><a class="btn big primary" href="#/new">＋ 새 교육 시작</a><a class="btn big primary" href="#/tbm/new">＋ TBM 시작</a></div>
     </section>
     ${ongoing.length ? `<h2 class="h">진행 중인 교육</h2><div class="cards">${ongoing.map(sessionCard).join('')}</div>` : ''}
+    ${tbmOn.length ? `<h2 class="h">진행 중인 TBM</h2><div class="cards">${tbmOn.map(TBM.card).join('')}</div>` : ''}
     <h2 class="h">바로가기</h2>
     <div class="grid2">
+      <a class="tile" href="#/tbm"><b>TBM 일지</b><span>작업 전 안전점검회의 기록·서명·PDF</span></a>
       <a class="tile" href="#/topics"><b>교육자료</b><span>작업별 안전수칙 보기·추가</span></a>
       <a class="tile" href="#/records"><b>교육 기록</b><span>지난 교육 결과 다시 저장</span></a>
       <a class="tile" href="#/sites"><b>현장·근로자</b><span>교육한 현장과 교육받은 사람 검색·관리</span></a>
@@ -491,33 +494,10 @@ async function sessionView(id, stepStr) {
       const nameIn = $('[name=name]', m.el);
       nameIn.value = preName;
       attachNameSearch(nameIn, known, s.workers.map(w => w.name));
-      // 이름에 맞는 과거 서명을 보여주고, 누르면 서명 칸에 불러온다
-      const box = document.createElement('div');
-      box.className = 'pastsig';
-      $('.sigwrap', m.el).before(box);
-      let used = null; // 불러온 과거 서명 코드 (새로 쓰기 시작하면 지움)
-      const mark = () => $$('[data-g]', box).forEach(b => b.classList.toggle('on', b.dataset.g === used));
-      $('canvas', m.el).addEventListener('pointerdown', () => { if (used) { pad.clear(); used = null; mark(); } }, true);
-      $('[data-clr]', m.el).addEventListener('click', () => { used = null; mark(); });
-      const showPast = async () => {
-        const name = nameIn.value.trim();
-        const list = name ? await Registry.sigs(name) : [];
-        if (used && !list.some(x => x.g === used)) { pad.clear(); used = null; }
-        box.innerHTML = list.length ? `<span>${esc(name)} 님의 이전 서명 <small>(눌러서 불러오기)</small></span>
-          <div class="pastlist">${list.map(x => `<div class="pitem"><button type="button" data-g="${x.g}"><img src="${Sig.toImage(x.g, 250, 100)}" alt="이전 서명"><small>${esc(x.site || '')} · ${esc(Report.fmtDate(new Date(x.at).toISOString(), false))}</small></button><button type="button" class="pdel" data-rm="${x.g}" title="이 서명 삭제">✕</button></div>`).join('')}</div>` : '';
-        $$('[data-g]', box).forEach(b => b.onclick = () => { pad.load(b.dataset.g); used = b.dataset.g; mark(); });
-        $$('[data-rm]', box).forEach(b => b.onclick = async () => {
-          if (!confirm('이 이전 서명을 삭제할까요?')) return;
-          await Registry.removeSig(name, b.dataset.rm);
-          showPast();
-        });
-        mark();
-      };
-      nameIn.addEventListener('input', showPast);
-      nameIn.addEventListener('change', showPast);
-      showPast();
+      const getUsed = attachPastSigs(m.el, nameIn, pad);
       bindWorkerForm(m.el, pad, async ({ name, sig }) => {
         if (s.workers.some(w => w.name === name) && !confirm(`${name} 님은 이미 서명했습니다. 한 번 더 받을까요?`)) return;
+        const used = getUsed();
         const reuse = !!used && (await Registry.sigs(name)).some(x => x.g === used);
         if (reuse) sig = used;
         const at = Math.floor(Date.now() / 1000);
@@ -655,6 +635,34 @@ async function inviteLink(s, mode) {
   const code = await Codec.pack({ v: 1, s: s.id, n: s.site, p: s.place, d: s.date, t: builtin, c, m: mode, w, k });
   return `${APP_URL}#/w/${code}`;
 }
+// 이름에 맞는 과거 서명을 보여주고, 누르면 서명 칸에 불러온다. 불러온 서명 코드를 돌려주는 함수를 반환
+function attachPastSigs(root, nameIn, pad) {
+  const box = document.createElement('div');
+  box.className = 'pastsig';
+  $('.sigwrap', root).before(box);
+  let used = null; // 불러온 과거 서명 코드 (새로 쓰기 시작하면 지움)
+  const mark = () => $$('[data-g]', box).forEach(b => b.classList.toggle('on', b.dataset.g === used));
+  $('canvas', root).addEventListener('pointerdown', () => { if (used) { pad.clear(); used = null; mark(); } }, true);
+  $('[data-clr]', root).addEventListener('click', () => { used = null; mark(); });
+  const showPast = async () => {
+    const name = nameIn.value.trim();
+    const list = name ? await Registry.sigs(name) : [];
+    if (used && !list.some(x => x.g === used)) { pad.clear(); used = null; }
+    box.innerHTML = list.length ? `<span>${esc(name)} 님의 이전 서명 <small>(눌러서 불러오기)</small></span>
+      <div class="pastlist">${list.map(x => `<div class="pitem"><button type="button" data-g="${x.g}"><img src="${Sig.toImage(x.g, 250, 100)}" alt="이전 서명"><small>${esc(x.site || '')} · ${esc(Report.fmtDate(new Date(x.at).toISOString(), false))}</small></button><button type="button" class="pdel" data-rm="${x.g}" title="이 서명 삭제">✕</button></div>`).join('')}</div>` : '';
+    $$('[data-g]', box).forEach(b => b.onclick = () => { pad.load(b.dataset.g); used = b.dataset.g; mark(); });
+    $$('[data-rm]', box).forEach(b => b.onclick = async () => {
+      if (!confirm('이 이전 서명을 삭제할까요?')) return;
+      await Registry.removeSig(name, b.dataset.rm);
+      showPast();
+    });
+    mark();
+  };
+  nameIn.addEventListener('input', showPast);
+  nameIn.addEventListener('change', showPast);
+  showPast();
+  return () => used;
+}
 // 이름 입력창에 등록 근로자 검색을 붙인다 (이미 서명한 사람은 표시만)
 function attachNameSearch(input, names, signed = []) {
   if (!names || !names.length) return;
@@ -687,6 +695,7 @@ async function workerView(code) {
   document.body.classList.add('worker');
   let p;
   try { p = await Codec.unpack(code); } catch (e) { view().innerHTML = `<p class="err">교육 링크가 올바르지 않습니다. (${esc(e.message)})</p>`; return; }
+  if (p.y === 't') return TBM.workerView(p);
   const topics = [...(p.t || []).map(id => Store.byId[id]).filter(Boolean),
     ...(p.c || []).map(c => ({ id: c.i, title: c.ti, cat: c.ca, suffix: c.su, desc: c.de, cases: c.cs, rules: c.ru, worker: c.wo, video: c.v, pg: c.pg }))];
   const doneKey = 'done-' + p.s;
@@ -735,7 +744,7 @@ async function importCode(text, expectId) {
   if (!s) return { ok: false, notFound: true, msg: '이 기기에서 해당 교육을 찾을 수 없습니다.' };
   if (s.workers.some(w => w.name === r.n && w.at === r.a)) return { ok: false, msg: `${r.n} 님 서명은 이미 받았습니다.`, s };
   if (s.workers.length >= MAX_WORKERS) return { ok: false, msg: `서명은 ${MAX_WORKERS}명까지입니다.`, s };
-  s.workers.push({ name: r.n, sig: r.g, at: r.a, via: r.m === 'r' ? '원격(링크)' : '현장(QR)' });
+  s.workers.push(Object.assign({ name: r.n, sig: r.g, at: r.a, via: r.m === 'r' ? '원격(링크)' : '현장(QR)' }, r.q ? { q: r.q } : {}));
   await Registry.addSig(r.n, r.g, s.site, r.a * 1000);
   await saveSession(s);
   await Registry.addPeople(s.site, [r.n]);
@@ -746,9 +755,10 @@ async function importView(code) {
   const kakao = /KAKAOTALK/i.test(navigator.userAgent);
   const full = location.href;
   if (r.s) {
+    const back = r.s.kind === 'tbm' ? '#/t/' + r.s.id + '/3' : '#/s/' + r.s.id + '/3';
     view().innerHTML = `<section class="result"><h2>${r.ok ? '✔ ' : ''}${esc(r.msg)}</h2><p>${esc(r.s.site)} · ${esc(Report.fmtDate(r.s.date))}</p>
-      <a class="btn big primary" href="#/s/${r.s.id}/3">교육으로 이동</a></section>`;
-    history.replaceState(null, '', '#/s/' + r.s.id + '/3');
+      <a class="btn big primary" href="${back}">${r.s.kind === 'tbm' ? 'TBM으로' : '교육으로'} 이동</a></section>`;
+    history.replaceState(null, '', back);
     return;
   }
   view().innerHTML = `<section class="result"><h2>${esc(r.msg)}</h2>
@@ -772,7 +782,7 @@ async function sitesView() {
       const people = Object.entries(st.people).sort((a, b) => b[1] - a[1]).map(e => e[0]);
       return `<section class="site" data-site="${esc(st.name)}">
         <div class="bar"><div><b>${esc(st.name)}</b><span class="hint">${st.place ? esc(st.place) + ' · ' : ''}근로자 ${people.length}명 · 최근 ${esc(Report.fmtDate(new Date(st.updated).toISOString(), false))}</span></div>
-          <div class="row"><a class="btn primary sm" href="#/new~${encodeURIComponent(st.name)}">이 현장 새 교육</a><button class="btn ghost sm" data-delsite>현장 삭제</button></div></div>
+          <div class="row"><a class="btn primary sm" href="#/new~${encodeURIComponent(st.name)}">이 현장 새 교육</a><a class="btn sm" href="#/tbm/new~${encodeURIComponent(st.name)}">이 현장 TBM</a><button class="btn ghost sm" data-delsite>현장 삭제</button></div></div>
         <div class="people">${people.map(n => `<span class="pchip ${q && Search.match(n, q) ? 'hit' : ''}">${esc(n)}<button data-delp="${esc(n)}" aria-label="${esc(n)} 삭제">✕</button></span>`).join('') || '<span class="hint">등록된 근로자가 없습니다.</span>'}</div>
         <div class="row addp"><input placeholder="근로자 추가 (여러 명은 쉼표로 구분)"><button class="btn sm" data-addp>추가</button></div>
       </section>`;
@@ -817,8 +827,8 @@ async function sitesView() {
 
 // ---------- 기록·설정·도움말 ----------
 async function records() {
-  const list = (await DB.all('sessions')).sort((a, b) => b.created - a.created);
-  view().innerHTML = `<div class="bar"><h1>교육 기록</h1></div>
+  const list = (await DB.all('sessions')).filter(s => s.kind !== 'tbm').sort((a, b) => b.created - a.created);
+  view().innerHTML = `<div class="bar"><h1>교육 기록</h1><a class="btn ghost" href="#/tbm">TBM 일지 기록 →</a></div>
     ${list.length ? `<div class="cards">${list.map(s => `<div class="rec">${sessionCard(s)}<button class="btn ghost sm" data-del="${s.id}">삭제</button></div>`).join('')}</div>` : '<p class="hint">아직 기록이 없습니다.</p>'}`;
   $$('[data-del]').forEach(b => b.onclick = async () => {
     if (!confirm('이 교육 기록을 삭제할까요? (저장해 둔 결과 파일은 지워지지 않습니다)')) return;
@@ -878,6 +888,12 @@ function help() {
     <li>새 교육의 현장명 칸에 글자나 초성(예: ㅅㅇ)을 넣으면 등록된 현장이 나오고, 고르면 교육장소도 채워집니다.</li>
     <li>서명 단계의 <b>이 현장 등록 근로자</b> 이름을 누르면 이름이 입력된 서명 창이 열립니다. 이름 칸에서도 검색됩니다.</li>
     <li>QR·원격 링크를 받은 근로자도 자기 이름을 검색해서 고를 수 있습니다.</li></ol>
+  <h2>TBM 일지</h2><ol>
+    <li>홈 → <b>＋ TBM 시작</b> → 현장·작업명·작업내용, 양식(사진 포함/사진 없음), TBM 리더를 입력합니다. 같은 현장은 <b>지난 TBM 불러오기</b>로 한 번에 채웁니다.</li>
+    <li><b>위험요인</b>: 잠재위험요인 3개와 대책을 목록에서 고르거나 직접 입력하고, 그중 1개를 중점위험으로 정합니다.</li>
+    <li><b>안내</b>: 큰 글씨 화면으로 금일 작업과 위험요인을 설명합니다.</li>
+    <li><b>서명</b>: TBM 리더 서명 후, 작업자 6명까지 QR 또는 이 기기에서 서명을 받습니다.</li>
+    <li><b>사진</b>(사진 포함 양식만) → <b>결과</b>: A4 한 장 PDF를 저장·공유해 시공사에 전달합니다. 결재칸(관리감독자·안전보건관리책임자)은 비워 두어 수기로 결재합니다.</li></ol>
   <h2>페이지 자료 등록</h2><ol>
     <li>교육자료 → <b>[＋ 페이지 자료 등록]</b> → 제목을 넣고 <b>PDF 추가</b>(쪽마다 나뉨), <b>이미지 추가</b>(여러 장), <b>카메라로 촬영</b> 중에서 페이지를 넣습니다.</li>
     <li>↑↓로 순서를 바꾸고, 쪽마다 설명을 붙일 수 있습니다. 근로자 확인 항목과 자율점검표는 선택입니다.</li>
@@ -901,6 +917,7 @@ const routes = [
   [/^#\/edit\/(.+)$/, editor], [/^#\/new(?:~(.+))?$/, newSession], [/^#\/sites$/, sitesView], [/^#\/s\/([^/]+)(?:\/(\d))?$/, sessionView],
   [/^#\/records$/, records], [/^#\/settings$/, settings], [/^#\/help$/, help],
   [/^#\/w\/(.+)$/, workerView], [/^#\/r\/(.+)$/, importView],
+  [/^#\/tbm$/, TBM.list], [/^#\/tbm\/new(?:~(.+))?$/, TBM.create], [/^#\/t\/([^/]+)(?:\/(\d))?$/, TBM.view],
 ];
 // 비밀번호가 맞아야 화면을 연다. 근로자 링크는 링크를 만든 지도요원의 비밀번호를 쓴다.
 async function needPin(h) {
