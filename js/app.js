@@ -657,6 +657,7 @@ function attachPastSigs(root, nameIn, pad) {
   const mark = () => $$('[data-g]', box).forEach(b => b.classList.toggle('on', b.dataset.g === used));
   $('canvas', root).addEventListener('pointerdown', () => { if (used) { pad.clear(); used = null; mark(); } }, true);
   $('[data-clr]', root).addEventListener('click', () => { used = null; mark(); });
+  $('canvas', root).addEventListener('sigwidth', () => { used = null; mark(); }); // 굵기를 바꾸면 새 서명으로 저장
   const showPast = async () => {
     const name = nameIn.value.trim();
     const list = name ? await Registry.sigs(name) : [];

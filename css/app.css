@@ -150,6 +150,11 @@ input.fixed { background: #eef1f5; color: var(--muted); }
 .sigwrap { display: flex; flex-direction: column; gap: 6px; font-weight: 600; }
 .sigpad { width: 100%; aspect-ratio: 5 / 2; background: #fff; border: 2px dashed #adb5bd; border-radius: 10px; touch-action: none; }
 .sigwrap .btn { align-self: flex-end; }
+.sigw { display: flex; align-items: center; gap: 5px; font-weight: 600; font-size: .88rem; color: #555; white-space: nowrap; }
+.sigw [data-w] { width: 34px; height: 30px; flex: none; border: 1px solid #ced4da; background: #fff; border-radius: 8px; display: flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; }
+.sigw [data-w] i { display: block; width: 18px; background: #333; border-radius: 4px; }
+.sigw [data-w].on { border: 2px solid var(--primary); background: #e8f5ec; }
+.sigw [data-clr] { margin-left: auto; }
 .confirm { flex-direction: row !important; align-items: flex-start; gap: 10px !important; font-weight: 600; padding: 8px 0; }
 .confirm input { width: 26px; height: 26px; flex: none; margin-top: 1px; accent-color: var(--ok); }
 .qrbox { background: #fff; padding: 12px; border-radius: 12px; margin: 12px auto; max-width: 420px; }
