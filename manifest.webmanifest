@@ -49,6 +49,17 @@
       ]
     },
     {
+      "name": "장비측정 기록",
+      "short_name": "장비측정",
+      "url": "./#/meas/new",
+      "icons": [
+        {
+          "src": "icons/app-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
       "name": "TBM 시작",
       "short_name": "TBM",
       "url": "./#/tbm/new",

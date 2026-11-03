@@ -125,7 +125,7 @@ function bindTopicButtons(root, topics = []) {
   $$('.t-pages [data-slide]', root).forEach(img => img.onclick = () => Pages.show(find(img.closest('.t-pages').querySelector('[data-slides]').dataset.slides).pages, +img.dataset.slide));
 }
 
-const ICON = {"edu": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z\"/><path d=\"M4 20.5A2.5 2.5 0 0 1 6.5 18H20v3H6.5A2.5 2.5 0 0 1 4 20.5z\"/><path d=\"M9 8h7M9 11.5h5\"/></svg>", "tbm": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"5\" y=\"4\" width=\"14\" height=\"17\" rx=\"2\"/><path d=\"M9 4V2.8h6V4\"/><path d=\"m8.5 12.5 2.3 2.3 4.7-4.8\"/></svg>", "site": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"9\" cy=\"8\" r=\"3.2\"/><path d=\"M3.5 20a5.5 5.5 0 0 1 11 0\"/><circle cx=\"17\" cy=\"9\" r=\"2.4\"/><path d=\"M15.5 14.2A4.5 4.5 0 0 1 21 18.5\"/></svg>", "rec": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"3\" y=\"4\" width=\"18\" height=\"5\" rx=\"1.5\"/><path d=\"M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9\"/><path d=\"M10 13h4\"/></svg>", "set": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"3\"/><path d=\"M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z\"/></svg>", "help": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M9.5 9.3a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.3-2.5 4\"/><path d=\"M12 17.3h.01\"/></svg>"};
+const ICON = {"edu": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z\"/><path d=\"M4 20.5A2.5 2.5 0 0 1 6.5 18H20v3H6.5A2.5 2.5 0 0 1 4 20.5z\"/><path d=\"M9 8h7M9 11.5h5\"/></svg>", "tbm": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"5\" y=\"4\" width=\"14\" height=\"17\" rx=\"2\"/><path d=\"M9 4V2.8h6V4\"/><path d=\"m8.5 12.5 2.3 2.3 4.7-4.8\"/></svg>", "meas": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"6\" y=\"2.5\" width=\"12\" height=\"19\" rx=\"2\"/><rect x=\"8.5\" y=\"5\" width=\"7\" height=\"5\" rx=\"1\"/><path d=\"M10 14.5h4M10 17.5h4\"/></svg>", "site": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"9\" cy=\"8\" r=\"3.2\"/><path d=\"M3.5 20a5.5 5.5 0 0 1 11 0\"/><circle cx=\"17\" cy=\"9\" r=\"2.4\"/><path d=\"M15.5 14.2A4.5 4.5 0 0 1 21 18.5\"/></svg>", "rec": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"3\" y=\"4\" width=\"18\" height=\"5\" rx=\"1.5\"/><path d=\"M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9\"/><path d=\"M10 13h4\"/></svg>", "set": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"3\"/><path d=\"M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z\"/></svg>", "help": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M9.5 9.3a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.3-2.5 4\"/><path d=\"M12 17.3h.01\"/></svg>"};
 // ---------- 앱 설치 (홈 화면에 등록) ----------
 let installEvt = null;
 const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
@@ -147,9 +147,11 @@ function drawInstall() {
 // ---------- 화면: 홈 ----------
 async function home() {
   const sessions = (await DB.all('sessions').catch(() => [])).sort((a, b) => b.created - a.created);
-  const ongoing = sessions.filter(s => !s.done && s.kind !== 'tbm').slice(0, 5);
+  const ongoing = sessions.filter(s => !s.done && !s.kind).slice(0, 5);
   const tbmOn = sessions.filter(s => !s.done && s.kind === 'tbm').slice(0, 5);
+  const measOn = sessions.filter(s => !s.done && s.kind === 'meas').slice(0, 5);
   const menu = [['#/topics', 'edu', '안전교육', '교육 시작·교육자료'], ['#/tbm', 'tbm', 'TBM 일지', '작업 전 안전점검회의'],
+    ['#/meas', 'meas', '장비측정', '측정값·지도사항·사진'],
     ['#/sites', 'site', '현장·근로자', '현장·교육받은 사람'], ['#/records', 'rec', '기록', '지난 결과 다시 저장'],
     ['#/settings', 'set', '설정', '비밀번호·저장 폴더'], ['#/help', 'help', '사용 방법', '진행 순서 안내']];
   view().innerHTML = `
@@ -157,7 +159,8 @@ async function home() {
     <div id="install"></div>
     <nav class="menu2">${menu.map(([h, i, t, d]) => `<a href="${h}"><i>${ICON[i]}</i><b>${t}</b><span>${d}</span></a>`).join('')}</nav>
     ${ongoing.length ? `<h2 class="h">진행 중인 교육</h2><div class="cards">${ongoing.map(sessionCard).join('')}</div>` : ''}
-    ${tbmOn.length ? `<h2 class="h">진행 중인 TBM</h2><div class="cards">${tbmOn.map(TBM.card).join('')}</div>` : ''}`;
+    ${tbmOn.length ? `<h2 class="h">진행 중인 TBM</h2><div class="cards">${tbmOn.map(TBM.card).join('')}</div>` : ''}
+    ${measOn.length ? `<h2 class="h">작성 중인 장비측정</h2><div class="cards">${measOn.map(Meas.card).join('')}</div>` : ''}`;
   drawInstall();
 }
 function sessionCard(s) {
@@ -796,7 +799,7 @@ async function sitesView() {
       const people = Object.entries(st.people).sort((a, b) => b[1] - a[1]).map(e => e[0]);
       return `<section class="site" data-site="${esc(st.name)}">
         <div class="bar"><div><b>${esc(st.name)}</b><span class="hint">${st.place ? esc(st.place) + ' · ' : ''}근로자 ${people.length}명 · 최근 ${esc(Report.fmtDate(new Date(st.updated).toISOString(), false))}</span></div>
-          <div class="row"><a class="btn primary sm" href="#/new~${encodeURIComponent(st.name)}">이 현장 새 교육</a><a class="btn sm" href="#/tbm/new~${encodeURIComponent(st.name)}">이 현장 TBM</a><button class="btn ghost sm" data-delsite>현장 삭제</button></div></div>
+          <div class="row"><a class="btn primary sm" href="#/new~${encodeURIComponent(st.name)}">이 현장 새 교육</a><a class="btn sm" href="#/tbm/new~${encodeURIComponent(st.name)}">이 현장 TBM</a><a class="btn sm" href="#/meas/new~${encodeURIComponent(st.name)}">이 현장 장비측정</a><button class="btn ghost sm" data-delsite>현장 삭제</button></div></div>
         <div class="people">${people.map(n => `<span class="pchip ${q && Search.match(n, q) ? 'hit' : ''}">${esc(n)}<button data-delp="${esc(n)}" aria-label="${esc(n)} 삭제">✕</button></span>`).join('') || '<span class="hint">등록된 근로자가 없습니다.</span>'}</div>
         <div class="row addp"><input placeholder="근로자 추가 (여러 명은 쉼표로 구분)"><button class="btn sm" data-addp>추가</button></div>
       </section>`;
@@ -841,8 +844,8 @@ async function sitesView() {
 
 // ---------- 기록·설정·도움말 ----------
 async function records() {
-  const list = (await DB.all('sessions')).filter(s => s.kind !== 'tbm').sort((a, b) => b.created - a.created);
-  view().innerHTML = `<div class="bar"><h1>교육 기록</h1><a class="btn ghost" href="#/tbm">TBM 일지 기록 →</a></div>
+  const list = (await DB.all('sessions')).filter(s => !s.kind).sort((a, b) => b.created - a.created);
+  view().innerHTML = `<div class="bar"><h1>교육 기록</h1><div class="row"><a class="btn ghost" href="#/tbm">TBM 일지 기록 →</a><a class="btn ghost" href="#/meas">장비측정 기록 →</a></div></div>
     ${list.length ? `<div class="cards">${list.map(s => `<div class="rec">${sessionCard(s)}<button class="btn ghost sm" data-del="${s.id}">삭제</button></div>`).join('')}</div>` : '<p class="hint">아직 기록이 없습니다.</p>'}`;
   $$('[data-del]').forEach(b => b.onclick = async () => {
     if (!confirm('이 교육 기록을 삭제할까요? (저장해 둔 결과 파일은 지워지지 않습니다)')) return;
@@ -908,6 +911,10 @@ function help() {
     <li><b>안내</b>: 큰 글씨 화면으로 금일 작업과 위험요인을 설명합니다.</li>
     <li><b>서명</b>: TBM 리더 서명 후, 작업자 6명까지 QR 또는 이 기기에서 서명을 받습니다.</li>
     <li><b>사진</b>(사진 포함 양식만) → <b>결과</b>: A4 한 장 PDF를 저장·공유해 시공사에 전달합니다. 결재칸(관리감독자·안전보건관리책임자)은 비워 두어 수기로 결재합니다.</li></ol>
+  <h2>장비측정</h2><ol>
+    <li>홈 → <b>장비측정</b> → <b>＋ 측정 기록</b> → 현장명·측정일을 넣고 측정한 장비를 체크합니다.</li>
+    <li>체크한 장비마다 측정장소·측정값·판정·지도사항을 쓰고 사진을 찍습니다. <b>지난 ○○ 불러오기</b>로 전에 쓴 내용을 고를 수 있습니다(현장과 관계없이 공통).</li>
+    <li><b>결과지 만들기</b> → A4 한 장에 장비 3개씩 PDF로 저장·공유하거나 이미지 1개로 저장합니다.</li></ol>
   <h2>페이지 자료 등록</h2><ol>
     <li>교육자료 → <b>[＋ 페이지 자료 등록]</b> → 제목을 넣고 <b>PDF 추가</b>(쪽마다 나뉨), <b>이미지 추가</b>(여러 장), <b>카메라로 촬영</b> 중에서 페이지를 넣습니다.</li>
     <li>↑↓로 순서를 바꾸고, 쪽마다 설명을 붙일 수 있습니다. 근로자 확인 항목과 자율점검표는 선택입니다.</li>
@@ -931,6 +938,7 @@ const routes = [
   [/^#\/edit\/(.+)$/, editor], [/^#\/new(?:~(.+))?$/, newSession], [/^#\/sites$/, sitesView], [/^#\/s\/([^/]+)(?:\/(\d))?$/, sessionView],
   [/^#\/records$/, records], [/^#\/settings$/, settings], [/^#\/help$/, help],
   [/^#\/w\/(.+)$/, workerView], [/^#\/r\/(.+)$/, importView],
+  [/^#\/meas$/, Meas.list], [/^#\/meas\/new(?:~(.+))?$/, Meas.create], [/^#\/m\/([^/]+)$/, Meas.view],
   [/^#\/tbm$/, TBM.list], [/^#\/tbm\/new(?:~(.+))?$/, TBM.create], [/^#\/t\/([^/]+)(?:\/(\d))?$/, TBM.view],
 ];
 // 비밀번호가 맞아야 화면을 연다. 근로자 링크는 링크를 만든 지도요원의 비밀번호를 쓴다.
