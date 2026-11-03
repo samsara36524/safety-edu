@@ -362,8 +362,7 @@ async function sessionView(id, stepStr) {
     const cats = {};
     Store.topics.forEach(t => { const g = t.custom ? '내가 추가한 자료' : String(t.cat).split('·')[0]; (cats[g] = cats[g] || []).push(t); });
     body.innerHTML = `<form class="form" id="f0">
-      <label>현장명 <small>(등록된 현장은 검색해서 선택)</small><input name="site" required value="${esc(s.site)}" placeholder="현장명 입력 또는 검색 (초성 검색 가능)"></label>
-      <p class="hint" id="siteinfo"></p>
+      <label>현장명<input name="site" required value="${esc(s.site)}" placeholder="현장명 입력 또는 검색 (초성 검색 가능)"></label>
       <div class="grid2"><label>교육장소 <input name="place" value="${esc(s.place)}" placeholder="예: 3층 슬래브"></label>
       <label>교육일시 <input name="date" type="datetime-local" value="${esc(s.date)}"></label></div>
       <label>지도요원(점검자) <input value="${esc(INSPECTOR)}" readonly class="fixed"></label>
@@ -371,17 +370,7 @@ async function sessionView(id, stepStr) {
       ${Object.entries(cats).map(([g, list]) => `<div class="chk-group"><b>${esc(g)}</b>${list.map(t => `<label class="chip"><input type="checkbox" name="t" value="${t.id}" ${s.topics.includes(t.id) ? 'checked' : ''}><span>${esc(t.title)}</span></label>`).join('')}</div>`).join('')}
       </fieldset></form>` + nav(null, 1);
     const f0 = $('#f0');
-    const siteInfo = async () => {
-      const st = await Registry.site(f0.site.value);
-      const n = st ? Object.keys(st.people).length : 0;
-      $('#siteinfo').textContent = !f0.site.value.trim() ? '' : st ? `✔ 등록된 현장 · 교육받은 근로자 ${n}명` : '새 현장 — 교육을 시작하면 등록됩니다.';
-    };
-    Search.attach(f0.site, async q => (await Registry.sites())
-      .filter(st => Search.match(st.name, q))
-      .map(st => ({ value: st.name, sub: `${st.place ? st.place + ' · ' : ''}근로자 ${Object.keys(st.people).length}명 · 최근 ${Report.fmtDate(new Date(st.updated).toISOString(), false)}`, st })),
-    it => { if (it.st.place) f0.place.value = it.st.place; siteInfo(); });
-    f0.site.addEventListener('input', siteInfo);
-    siteInfo();
+    siteField(f0.site, st => { if (st.place) f0.place.value = st.place; });
     bindNav(async () => {
       const f = $('#f0'), fd = new FormData(f);
       if (!fd.get('site').trim()) { toast('현장명을 입력하세요.'); return false; }
@@ -680,6 +669,85 @@ function attachPastSigs(root, nameIn, pad) {
   showPast();
   return () => used;
 }
+// ---------- 현장 등록·수정 창 ----------
+// st가 있으면 수정, 없으면 새 등록. 저장하면 저장된 현장을 넘겨준다.
+function siteForm(st, preName = '') {
+  return new Promise(resolve => {
+    const v = st || { name: preName }, oldName = st ? st.name : null;
+    const m = modal(`<h2>${st ? '현장 정보 수정' : '새 현장 등록'}</h2><form class="form" id="sitef">
+      <label>현장명 <input name="name" required value="${esc(v.name)}" placeholder="예: OO아파트 신축공사"></label>
+      <label>시공사 <input name="client" value="${esc(v.client || '')}" placeholder="예: (주)OO건설"></label>
+      <label>현장 주소 <input name="addr" value="${esc(v.addr || '')}" placeholder="예: 경기도 OO시 OO로 123"></label>
+      <label>기본 장소 <small>(교육·TBM 장소로 자동 입력)</small><input name="place" value="${esc(v.place || '')}" placeholder="예: 현장 사무실 앞, 아침 조회장"></label>
+      <div class="grid2"><label>현장 담당자 <input name="mgr" value="${esc(v.mgr || '')}" placeholder="예: 안전관리자 홍길동"></label>
+        <label>연락처 <input name="tel" type="tel" value="${esc(v.tel || '')}" placeholder="010-0000-0000"></label></div>
+      <label>메모 <textarea name="memo" rows="2" placeholder="예: 지도 주기, 공정 특이사항">${esc(v.memo || '')}</textarea></label>
+      ${st ? '' : '<label>근로자 <small>(선택 · 한 줄에 한 명, 또는 쉼표로 구분)</small><textarea name="w" rows="3"></textarea></label>'}
+      ${st ? '<p class="hint">현장명을 바꾸면 이 현장의 교육·TBM·장비측정 기록의 현장명도 함께 바뀝니다.</p>' : ''}
+      <button class="btn primary big">${st ? '저장' : '등록'}</button></form>`, { onClose: () => resolve(null) });
+    $('#sitef', m.el).onsubmit = async e => {
+      e.preventDefault();
+      const fd = new FormData(e.target), data = Object.fromEntries(fd.entries());
+      try {
+        const saved = await Registry.saveSite(oldName, data);
+        if (oldName && Registry.norm(oldName) !== Registry.norm(saved.name)) {
+          for (const s of await DB.all('sessions').catch(() => [])) {
+            if (Registry.norm(s.site) === Registry.norm(oldName)) { s.site = saved.name; await DB.put('sessions', s); }
+          }
+        }
+        if (!st && data.w) await Registry.addPeople(saved.name, data.w.split(/[,，\n]/));
+        toast(st ? '현장 정보를 저장했습니다.' : `'${saved.name}' 현장을 등록했습니다.`);
+        resolve(saved); m.el.remove();
+      } catch (err) { toast(err.message, 3500); }
+    };
+    setTimeout(() => $('[name=name]', m.el).focus(), 50);
+  });
+}
+const siteSub = st => [st.client, st.place || st.addr, `근로자 ${Object.keys(st.people || {}).length}명`].filter(Boolean).join(' · ');
+// 등록 현장 고르기 창
+function pickSite(onPick) {
+  const m = modal(`<div class="bar"><h2>현장 선택</h2><button type="button" class="btn primary sm" id="ps-new">＋ 새 현장 등록</button></div>
+    <input class="pp-q" id="ps-q" type="search" placeholder="현장명·시공사 검색 (초성 검색 가능)">
+    <ul class="pp-list" id="ps-list"></ul>`, { wide: true });
+  const q = $('#ps-q', m.el), ul = $('#ps-list', m.el);
+  const draw = async () => {
+    const list = (await Registry.sites()).filter(st => Search.match(st.name, q.value) || Search.match(st.client || '', q.value));
+    ul.innerHTML = list.length ? list.map((st, i) => `<li><button type="button" class="pp-use" data-i="${i}"><b>${esc(st.name)}</b><br><small>${esc(siteSub(st))}</small></button></li>`).join('')
+      : `<li class="hint">${q.value ? '검색 결과가 없습니다.' : '등록된 현장이 없습니다. 오른쪽 위 ＋ 새 현장 등록을 누르세요.'}</li>`;
+    $$('[data-i]', ul).forEach(b => b.onclick = () => { m.el.remove(); onPick(list[+b.dataset.i]); });
+  };
+  q.oninput = draw;
+  $('#ps-new', m.el).onclick = async () => { m.el.remove(); const st = await siteForm(null, q.value.trim()); if (st) onPick(st); };
+  draw();
+}
+// 현장명 입력칸: 검색 + [현장 선택] [＋ 새 현장] 버튼 + 등록 여부 안내. onPick(st)는 등록 현장을 골랐을 때.
+function siteField(input, onPick) {
+  Search.attach(input, async q => (await Registry.sites()).filter(st => Search.match(st.name, q) || Search.match(st.client || '', q))
+    .map(st => ({ value: st.name, sub: siteSub(st), st })), it => { info(); onPick && onPick(it.st); });
+  const box = document.createElement('div');
+  box.className = 'sitefield';
+  box.innerHTML = `<span class="sf-info"></span><span class="row"><button type="button" class="btn sm" data-sf-pick>현장 선택</button><button type="button" class="btn sm ghost" data-sf-new>＋ 새 현장</button></span>`;
+  (input.closest('label') || input.parentNode).after(box);
+  const choose = st => { input.value = st.name; info(); onPick && onPick(st); };
+  async function info() {
+    const v = input.value.trim(), st = v ? await Registry.site(v) : null;
+    const el = $('.sf-info', box);
+    if (!v) { el.innerHTML = ''; return; }
+    if (st) {
+      el.innerHTML = `<span class="sf-ok">✔ 등록 현장</span> ${esc(siteSub(st))} <button type="button" class="linkbtn" data-sf-edit>정보 수정</button>`;
+      $('[data-sf-edit]', el).onclick = async () => { const s2 = await siteForm(st); if (s2) choose(s2); };
+    } else {
+      el.innerHTML = `<span class="sf-new">등록되지 않은 현장</span> <button type="button" class="linkbtn" data-sf-reg>이 이름으로 등록</button>`;
+      $('[data-sf-reg]', el).onclick = async () => { const s2 = await siteForm(null, v); if (s2) choose(s2); };
+    }
+  }
+  $('[data-sf-pick]', box).onclick = () => pickSite(choose);
+  $('[data-sf-new]', box).onclick = async () => { const st = await siteForm(null, ''); if (st) choose(st); };
+  input.addEventListener('input', info);
+  info();
+  return { refresh: info };
+}
+
 // 이름 입력창에 등록 근로자 검색을 붙인다 (이미 서명한 사람은 표시만)
 function attachNameSearch(input, names, signed = []) {
   if (!names || !names.length) return;
@@ -789,23 +857,24 @@ async function importView(code) {
 // ---------- 현장·근로자 관리 ----------
 async function sitesView() {
   view().innerHTML = `<div class="bar"><h1>현장·근로자</h1><button class="btn primary" id="addsite">＋ 현장 등록</button></div>
-    <p class="hint">교육한 현장과 교육받은 근로자는 자동으로 등록됩니다. 다음 교육 때 현장명과 이름을 검색해서 입력할 수 있습니다.</p>
-    <input id="q" type="search" placeholder="현장명 또는 근로자 이름 검색 (초성 검색 가능)">
+    <p class="hint">관리 중인 현장을 등록해 두면 안전교육·TBM·장비측정에서 <b>현장 선택</b>으로 바로 고를 수 있습니다. 교육받은 근로자는 자동으로 등록됩니다.</p>
+    <input id="q" type="search" placeholder="현장명·시공사 또는 근로자 이름 검색 (초성 검색 가능)">
     <div id="slist" class="site-list"></div>`;
   const draw = async () => {
     const q = $('#q').value;
-    const list = (await Registry.sites()).filter(st => Search.match(st.name, q) || Object.keys(st.people).some(n => Search.match(n, q)));
+    const list = (await Registry.sites()).filter(st => Search.match(st.name, q) || Search.match(st.client || '', q) || Object.keys(st.people).some(n => Search.match(n, q)));
     $('#slist').innerHTML = list.length ? list.map(st => {
       const people = Object.entries(st.people).sort((a, b) => b[1] - a[1]).map(e => e[0]);
       return `<section class="site" data-site="${esc(st.name)}">
-        <div class="bar"><div><b>${esc(st.name)}</b><span class="hint">${st.place ? esc(st.place) + ' · ' : ''}근로자 ${people.length}명 · 최근 ${esc(Report.fmtDate(new Date(st.updated).toISOString(), false))}</span></div>
-          <div class="row"><a class="btn primary sm" href="#/new~${encodeURIComponent(st.name)}">이 현장 새 교육</a><a class="btn sm" href="#/tbm/new~${encodeURIComponent(st.name)}">이 현장 TBM</a><a class="btn sm" href="#/meas/new~${encodeURIComponent(st.name)}">이 현장 장비측정</a><button class="btn ghost sm" data-delsite>현장 삭제</button></div></div>
+        <div class="bar"><div><b>${esc(st.name)}</b><span class="hint">${esc([st.client, st.addr].filter(Boolean).join(' · '))}</span><span class="hint">${esc([st.place && '장소 ' + st.place, st.mgr, st.tel].filter(Boolean).join(' · '))}${st.place || st.mgr || st.tel ? ' · ' : ''}근로자 ${people.length}명 · 최근 ${esc(Report.fmtDate(new Date(st.updated).toISOString(), false))}</span>${st.memo ? `<span class="hint">메모: ${esc(st.memo)}</span>` : ''}</div>
+          <div class="row"><a class="btn primary sm" href="#/new~${encodeURIComponent(st.name)}">이 현장 새 교육</a><a class="btn sm" href="#/tbm/new~${encodeURIComponent(st.name)}">이 현장 TBM</a><a class="btn sm" href="#/meas/new~${encodeURIComponent(st.name)}">이 현장 장비측정</a><button class="btn ghost sm" data-editsite>수정</button><button class="btn ghost sm" data-delsite>삭제</button></div></div>
         <div class="people">${people.map(n => `<span class="pchip ${q && Search.match(n, q) ? 'hit' : ''}">${esc(n)}<button data-delp="${esc(n)}" aria-label="${esc(n)} 삭제">✕</button></span>`).join('') || '<span class="hint">등록된 근로자가 없습니다.</span>'}</div>
         <div class="row addp"><input placeholder="근로자 추가 (여러 명은 쉼표로 구분)"><button class="btn sm" data-addp>추가</button></div>
       </section>`;
     }).join('') : '<p class="hint">등록된 현장이 없습니다.</p>';
     $$('#slist .site').forEach(el => {
       const name = el.dataset.site;
+      $('[data-editsite]', el).onclick = async () => { if (await siteForm(await Registry.site(name))) draw(); };
       $('[data-delsite]', el).onclick = async () => {
         if (!confirm(`'${name}' 현장과 등록 근로자를 삭제할까요? (교육 기록은 남습니다)`)) return;
         await Registry.removeSite(name); draw();
@@ -825,20 +894,7 @@ async function sitesView() {
     });
   };
   $('#q').oninput = draw;
-  $('#addsite').onclick = () => {
-    const m = modal(`<h2>현장 등록</h2><form class="form" id="nsf">
-      <label>현장명 <input name="n" required></label><label>교육장소 <input name="p"></label>
-      <label>근로자 <small>(한 줄에 한 명, 또는 쉼표로 구분)</small><textarea name="w" rows="5"></textarea></label>
-      <button class="btn primary">등록</button></form>`);
-    $('#nsf', m.el).onsubmit = async e => {
-      e.preventDefault();
-      const fd = new FormData(e.target), n = fd.get('n').trim();
-      if (!n) return;
-      await Registry.addSite(n, fd.get('p').trim());
-      await Registry.addPeople(n, fd.get('w').split(/[,，\n]/));
-      m.close(); toast('등록했습니다.'); draw();
-    };
-  };
+  $('#addsite').onclick = async () => { if (await siteForm(null)) draw(); };
   draw();
 }
 

@@ -114,7 +114,7 @@ const Meas = (() => {
 
     view().innerHTML = `<div class="bar"><h1>장비측정 기록</h1><a class="btn ghost sm" href="#/meas">목록</a></div>
       <form class="form" id="mf">
-        <label>현장명 <small>(등록된 현장은 검색해서 선택)</small><input name="site" required value="${esc(t.site)}" placeholder="현장명 입력 또는 검색 (초성 검색 가능)"></label>
+        <label>현장명<input name="site" required value="${esc(t.site)}" placeholder="현장명 입력 또는 검색 (초성 검색 가능)"></label>
         <div class="grid2"><label>측정일 <input name="date" type="date" value="${esc(t.date)}"></label>
           <label>측정자 <input value="${esc(INSPECTOR)}" readonly class="fixed"></label></div>
         <fieldset><legend>측정한 장비 <small>(체크한 장비만 작성·출력)</small></legend>
@@ -124,8 +124,7 @@ const Meas = (() => {
       <div class="row center"><button class="btn big primary" id="make">결과지 만들기 (PDF·이미지)</button></div>
       <div id="out"></div>`;
     const f = $('#mf');
-    Search.attach(f.site, async q => (await Registry.sites()).filter(st => Search.match(st.name, q))
-      .map(st => ({ value: st.name, sub: st.place || '' })), () => { t.site = f.site.value.trim(); later(); });
+    siteField(f.site, () => { t.site = f.site.value.trim(); later(); });
     f.site.oninput = () => { t.site = f.site.value.trim(); later(); };
     f.date.onchange = () => { t.date = f.date.value; later(); };
     $$('[data-on]').forEach(c => c.onchange = () => { t.items[+c.dataset.on].on = c.checked; later(); drawEqs(); });
@@ -189,7 +188,7 @@ const Meas = (() => {
       const btn = $('#make'); btn.disabled = true; btn.textContent = '만드는 중…';
       try {
         await save(t);
-        await Registry.addSite(t.site, '');
+        await Registry.addSite(t.site);
         await libAdd(sel);
         const res = await build(t);
         t.done = true; await save(t);

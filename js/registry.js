@@ -37,6 +37,25 @@ const Registry = (() => {
     const r = await load(), st = r.sites[norm(siteName)];
     if (st) { delete st.people[name]; await save(); }
   }
+  // 현장 등록·수정 (oldName이 있으면 수정, 이름이 바뀌면 옮겨 저장)
+  const FIELDS = ['client', 'addr', 'place', 'mgr', 'tel', 'memo'];
+  async function saveSite(oldName, data) {
+    const r = await load();
+    const name = String(data.name || '').trim(), nk = norm(name);
+    if (!nk) throw new Error('현장명을 입력하세요.');
+    const ok = oldName ? norm(oldName) : null;
+    if (r.sites[nk] && nk !== ok) throw new Error(`'${r.sites[nk].name}' 현장이 이미 등록되어 있습니다.`);
+    const st = (ok && r.sites[ok]) || { people: {}, created: Date.now() };
+    if (ok && ok !== nk) delete r.sites[ok];
+    st.name = name;
+    for (const f of FIELDS) st[f] = String(data[f] || '').trim();
+    st.updated = Date.now();
+    r.sites[nk] = st;
+    // 이름이 바뀌면 이전 서명에 적힌 현장명도 바꾼다
+    if (ok && ok !== nk && r.sigs) for (const list of Object.values(r.sigs)) for (const x of list) if (norm(x.site) === ok) x.site = name;
+    await save();
+    return st;
+  }
   async function removeSite(siteName) {
     const r = await load(); delete r.sites[norm(siteName)]; await save();
   }
@@ -86,7 +105,7 @@ const Registry = (() => {
     r.bf = true;
     await save();
   }
-  return { addSite, addPeople, removePerson, removeSite, sites, site, people, backfill, norm, addSig, sigs, removeSig };
+  return { addSite, saveSite, addPeople, removePerson, removeSite, sites, site, people, backfill, norm, addSig, sigs, removeSig };
 })();
 
 const Search = (() => {

@@ -131,7 +131,7 @@ const TBM = (() => {
     if (step === 0) {
       const prev = (await all()).find(x => x.id !== t.id && x.site && x.site === t.site);
       body.innerHTML = `<form class="form" id="f0">
-        <label>현장명 <small>(등록된 현장은 검색해서 선택)</small><input name="site" required value="${esc(t.site)}" placeholder="현장명 입력 또는 검색 (초성 검색 가능)"></label>
+        <label>현장명<input name="site" required value="${esc(t.site)}" placeholder="현장명 입력 또는 검색 (초성 검색 가능)"></label>
         <div id="prevbox"></div>
         <div class="grid2"><label>TBM 장소 <input name="place" value="${esc(t.place)}" placeholder="예: 아침 조회장, B3 UPS실"></label>
           <label>날씨 <input name="weather" list="wlist" value="${esc(t.weather)}"><datalist id="wlist">${WEATHER.map(w => `<option value="${w}">`).join('')}</datalist></label></div>
@@ -162,9 +162,7 @@ const TBM = (() => {
           await save(t); toast('지난 TBM 내용을 불러왔습니다. 위험요인도 함께 채웠습니다.'); view_(t.id, 0);
         };
       };
-      Search.attach(f.site, async q => (await Registry.sites()).filter(st => Search.match(st.name, q))
-        .map(st => ({ value: st.name, sub: `${st.place ? st.place + ' · ' : ''}근로자 ${Object.keys(st.people).length}명`, st })),
-      it => { if (it.st.place && !f.place.value) f.place.value = it.st.place; drawPrev(); });
+      siteField(f.site, st => { if (st.place && !f.place.value) f.place.value = st.place; drawPrev(); });
       f.site.addEventListener('input', drawPrev);
       if (prev || t.site) drawPrev();
       bindNav(async () => {
