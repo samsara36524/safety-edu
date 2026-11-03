@@ -1,10 +1,15 @@
 // 서명 패드: 획을 좌표로 기록하고, QR/링크에 담을 수 있게 작은 바이트로 인코딩한다.
+// 붓 효과: 점마다 굵기(1~15단계)를 함께 기록한다.
+//  - 펜(S펜 등): 누르는 힘(필압)으로 굵기 결정
+//  - 손가락: 천천히 쓰면 굵게, 빠르게 쓰면 가늘게 (붓처럼)
+//  - 획의 시작과 끝은 가늘게 모아 붓끝 느낌을 낸다
 const Sig = (() => {
   const GW = 250, GH = 100; // 좌표 격자 (가로 250 x 세로 100)
+  const WMIN = 1, WMAX = 15; // 굵기 단계
+  const unitW = lv => 0.55 + lv * 0.36; // 단계 → 격자 단위 굵기 (약 0.9 ~ 5.9)
 
   function pad(canvas) {
-    const ctx = canvas.getContext('2d');
-    let strokes = [], cur = null;
+    let strokes = [], cur = null, last = null, raf = 0;
     function fit() {
       const r = canvas.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
@@ -12,24 +17,54 @@ const Sig = (() => {
       canvas.height = Math.round(r.height * dpr);
       redraw();
     }
-    function pt(e) {
+    const redraw = () => draw(canvas, strokes);
+    const later = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; redraw(); }); };
+    function xy(e) {
       const r = canvas.getBoundingClientRect();
-      return [
-        Math.max(0, Math.min(GW - 1, Math.round((e.clientX - r.left) / r.width * (GW - 1)))),
-        Math.max(0, Math.min(GH - 1, Math.round((e.clientY - r.top) / r.height * (GH - 1))))
-      ];
+      return {
+        gx: Math.max(0, Math.min(GW - 1, (e.clientX - r.left) / r.width * (GW - 1))),
+        gy: Math.max(0, Math.min(GH - 1, (e.clientY - r.top) / r.height * (GH - 1))),
+        t: e.timeStamp
+      };
     }
-    function redraw() { draw(canvas, strokes); }
+    // 필압이 실제로 들어오는지 (손가락 터치는 대개 0.5·1 고정값)
+    const realPressure = e => (e.pointerType === 'pen' && e.pressure > 0) || (e.pressure > 0 && e.pressure !== 0.5 && e.pressure !== 1);
+    function level(e, p) {
+      let target;
+      const speedLv = () => {
+        if (!last) return 9;
+        const dt = Math.max(1, p.t - last.t);
+        const v = Math.hypot(p.gx - last.gx, p.gy - last.gy) / dt; // 격자/ms
+        return WMAX - v * 13;
+      };
+      if (realPressure(e)) {
+        const pl = WMIN + 1 + Math.pow(e.pressure, 0.8) * (WMAX - 2);
+        target = e.pointerType === 'pen' ? pl * 0.8 + speedLv() * 0.2 : (pl + speedLv()) / 2;
+      } else target = speedLv();
+      target = Math.max(WMIN + 1, Math.min(WMAX, target));
+      const prev = last ? last.lv : target;
+      return prev * 0.65 + target * 0.35; // 굵기를 부드럽게 바꾼다
+    }
+    function add(e) {
+      const p = xy(e);
+      p.lv = level(e, p);
+      const q = [Math.round(p.gx), Math.round(p.gy), p.lv]; // 굵기는 그리는 동안 소수로 두고 저장할 때 반올림
+      const l = cur[cur.length - 1];
+      if (!l || q[0] !== l[0] || q[1] !== l[1]) cur.push(q);
+      else l[2] = (l[2] + q[2]) / 2;
+      last = p;
+    }
     canvas.addEventListener('pointerdown', e => {
       e.preventDefault(); canvas.setPointerCapture(e.pointerId);
-      cur = [pt(e)]; strokes.push(cur); redraw();
+      cur = []; last = null; strokes.push(cur); add(e); later();
     });
     canvas.addEventListener('pointermove', e => {
       if (!cur) return; e.preventDefault();
-      const p = pt(e), l = cur[cur.length - 1];
-      if (p[0] !== l[0] || p[1] !== l[1]) { cur.push(p); redraw(); }
+      const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+      (evs.length ? evs : [e]).forEach(add);
+      later();
     });
-    const end = () => { cur = null; };
+    const end = () => { cur = null; last = null; later(); };
     canvas.addEventListener('pointerup', end);
     canvas.addEventListener('pointercancel', end);
     canvas.style.touchAction = 'none';
@@ -39,26 +74,60 @@ const Sig = (() => {
       clear() { strokes = []; redraw(); },
       load(code) { strokes = decode(code); redraw(); },
       isEmpty() { return strokes.reduce((n, s) => n + s.length, 0) < 3; },
-      strokes() { return strokes.map(s => simplify(s, 0.7)); },
-      ctx
+      strokes() { return strokes.map(s => simplify(s, 0.6)); }
     };
   }
 
+  // 그리기: 굵기 정보가 있으면 붓 효과, 없으면(예전 서명) 일정한 선
   function draw(canvas, strokes, color = '#111') {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const sx = canvas.width / (GW - 1), sy = canvas.height / (GH - 1);
-    ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = color;
-    ctx.lineWidth = Math.max(2, canvas.width / 110);
+    const u = (sx + sy) / 2; // 격자 1칸의 화면 크기
+    ctx.fillStyle = color; ctx.strokeStyle = color;
     for (const s of strokes) {
-      ctx.beginPath();
-      s.forEach(([x, y], i) => i ? ctx.lineTo(x * sx, y * sy) : ctx.moveTo(x * sx, y * sy));
-      if (s.length === 1) ctx.lineTo(s[0][0] * sx + 0.5, s[0][1] * sy + 0.5);
-      ctx.stroke();
+      if (!s.length) continue;
+      if (s[0].length < 3) { // 예전 서명
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.lineWidth = Math.max(2, canvas.width / 110);
+        ctx.beginPath();
+        s.forEach(([x, y], i) => i ? ctx.lineTo(x * sx, y * sy) : ctx.moveTo(x * sx, y * sy));
+        if (s.length === 1) ctx.lineTo(s[0][0] * sx + 0.5, s[0][1] * sy + 0.5);
+        ctx.stroke();
+        continue;
+      }
+      brush(ctx, s, sx, sy, u);
     }
   }
+  // 점 사이를 부드러운 곡선(캣멀-롬)으로 잇고, 굵기가 변하는 원을 촘촘히 찍어 붓 획을 만든다
+  function brush(ctx, s, sx, sy, u) {
+    const n = s.length;
+    const P = s.map(([x, y]) => [x * sx, y * sy]);
+    const R = s.map(([, , lv], i) => {
+      // 붓끝: 획의 처음과 끝을 가늘게
+      const k = Math.min(i, n - 1 - i);
+      const taper = n <= 3 ? 0.7 : k === 0 ? 0.35 : k === 1 ? 0.7 : 1;
+      return Math.max(0.5, unitW(lv) * u * 0.5 * taper);
+    });
+    ctx.beginPath();
+    const dot = (x, y, r) => { ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, Math.PI * 2); };
+    if (n === 1) { dot(P[0][0], P[0][1], Math.max(R[0], unitW(s[0][2]) * u * 0.5)); ctx.fill(); return; }
+    for (let i = 0; i < n - 1; i++) {
+      const p0 = P[i - 1] || P[i], p1 = P[i], p2 = P[i + 1], p3 = P[i + 2] || P[i + 1];
+      const len = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]);
+      const step = Math.max(0.6, Math.min(R[i], R[i + 1]) * 0.45);
+      const m = Math.max(1, Math.ceil(len / step));
+      for (let j = 0; j <= m; j++) {
+        const t = j / m, t2 = t * t, t3 = t2 * t;
+        const x = 0.5 * ((2 * p1[0]) + (-p0[0] + p2[0]) * t + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3);
+        const y = 0.5 * ((2 * p1[1]) + (-p0[1] + p2[1]) * t + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3);
+        dot(x, y, R[i] + (R[i + 1] - R[i]) * t);
+      }
+    }
+    ctx.fill();
+  }
 
-  // Ramer–Douglas–Peucker 단순화
+  // Ramer–Douglas–Peucker 단순화 (굵기가 크게 바뀌는 점도 남긴다)
   function simplify(pts, eps) {
     if (pts.length < 3) return pts.slice();
     const d = (p, a, b) => {
@@ -68,7 +137,8 @@ const Sig = (() => {
       let t = len ? (A * C + B * D) / len : 0;
       t = Math.max(0, Math.min(1, t));
       const dx = x1 + t * C - x, dy = y1 + t * D - y;
-      return Math.sqrt(dx * dx + dy * dy);
+      const dw = p.length > 2 ? (p[2] - (a[2] + t * (b[2] - a[2]))) * 0.45 : 0;
+      return Math.sqrt(dx * dx + dy * dy + dw * dw);
     };
     let max = 0, idx = 0;
     for (let i = 1; i < pts.length - 1; i++) {
@@ -83,15 +153,21 @@ const Sig = (() => {
   }
 
   // 획 → 바이트(가변 길이 정수 + 지그재그 차분) → base64url
+  // 새 형식: [0, 1(버전), 획수, (점수, (dx, dy, 굵기)...)...]  ← 첫 값 0으로 예전 형식과 구분
   function encode(strokes) {
     const out = [];
     const vint = v => { while (v > 127) { out.push((v & 127) | 128); v >>>= 7; } out.push(v); };
     const zz = v => (v << 1) ^ (v >> 31);
+    const brushy = strokes.some(s => s.some(p => p.length > 2));
+    if (brushy) { vint(0); vint(1); }
     vint(strokes.length);
     for (const s of strokes) {
       vint(s.length);
       let px = 0, py = 0;
-      for (const [x, y] of s) { vint(zz(x - px)); vint(zz(y - py)); px = x; py = y; }
+      for (const p of s) {
+        vint(zz(p[0] - px)); vint(zz(p[1] - py)); px = p[0]; py = p[1];
+        if (brushy) vint(Math.max(WMIN, Math.min(WMAX, Math.round(p[2] || 8))));
+      }
     }
     return Codec.b64u.enc(Uint8Array.from(out));
   }
@@ -99,10 +175,15 @@ const Sig = (() => {
     const b = Codec.b64u.dec(str); let i = 0;
     const vint = () => { let v = 0, sh = 0, c; do { c = b[i++]; v |= (c & 127) << sh; sh += 7; } while (c & 128); return v >>> 0; };
     const unzz = v => (v >>> 1) ^ -(v & 1);
-    const n = vint(), strokes = [];
+    let n = vint(), brushy = false;
+    if (n === 0 && i < b.length) { vint(); n = vint(); brushy = true; } // 새 형식 (버전 1)
+    const strokes = [];
     for (let k = 0; k < n; k++) {
       const m = vint(), s = []; let px = 0, py = 0;
-      for (let j = 0; j < m; j++) { px += unzz(vint()); py += unzz(vint()); s.push([px, py]); }
+      for (let j = 0; j < m; j++) {
+        px += unzz(vint()); py += unzz(vint());
+        s.push(brushy ? [px, py, vint()] : [px, py]);
+      }
       strokes.push(s);
     }
     return strokes;
