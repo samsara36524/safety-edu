@@ -50,6 +50,20 @@ const Law = (() => {
   const all = async () => (await DB.all('sessions').catch(() => [])).filter(x => x.kind === 'law').sort((a, b) => b.created - a.created);
   const lines = s => esc(s || '').replace(/\n/g, '<br>');
   const INSPECTOR_NAME = String(INSPECTOR).split(' ').pop(); // '이남석'
+  // 해당여부: 'o' 해당(○), 't' 발생 시(△), '' 미해당(공백). 예전 기록의 true는 해당(○)으로 본다
+  const mk = v => v === true || v === 'o' ? 'o' : v === 't' ? 't' : '';
+  const SYM = { o: '○', t: '△', '': '' };
+  const MARKS = [['o', '○', '해당'], ['t', '△', '발생 시'], ['', '', '미해당']];
+  const markUI = v => `<div class="lw-mkg">${MARKS.map(([k, s, l]) => `<button type="button" data-v="${k}" class="${mk(v) === k ? 'on' : ''}">${s ? `<i>${s}</i>` : ''}${l}</button>`).join('')}</div>`;
+  const tally = arr => { const o = arr.filter(v => mk(v) === 'o').length, tr = arr.filter(v => mk(v) === 't').length; return { o, t: tr }; };
+  const tallyTxt = arr => { const c = tally(arr); return `해당(○) ${c.o}개 · 발생 시(△) ${c.t}개`; };
+  const LEGEND = '○ 해당 · △ 발생 시 · 공백 미해당';
+  // 항목 카드에서 해당여부 버튼을 누르면 값을 바꾼다
+  const bindMark = (li, get, set) => $$('.lw-mkg [data-v]', li).forEach(b => b.onclick = () => {
+    set(b.dataset.v);
+    $$('.lw-mkg [data-v]', li).forEach(x => x.classList.toggle('on', x.dataset.v === mk(get())));
+    li.classList.toggle('on', mk(get()) === 'o'); li.classList.toggle('tri', mk(get()) === 't');
+  });
   const XMAX = 20; // 3쪽 추가 항목 최대 개수
   const XMIN_ROWS = 12; // 3쪽 표 최소 행 수 (모자라면 빈 행으로 채워 수기 기재)
   const xItems = t => (t.extra || []).filter(x => (x.t || '').trim());
@@ -68,11 +82,11 @@ const Law = (() => {
 
   // ---------- 목록 ----------
   function card(t) {
-    const n = t.chk.filter(Boolean).length;
+    const n = t.chk.filter(v => mk(v)).length;
     return `<a class="card" href="#/l/${t.id}">
       <b><span class="cat c-law">체계</span>${esc(t.site || '(현장명 없음)')}</b>
       <span>${esc(fmtDay(t.date))} · 현장소장 ${esc(t.boss || '-')}</span>
-      <span class="badge ${t.done ? 'ok' : ''}">${t.done ? '완료' : '작성 중'} · 해당 ${n}개 / ${ITEMS.length}개${useX(t) ? ` · 추가 ${xItems(t).length}개` : ''} · 서명 ${(t.sigI ? 1 : 0) + (t.sigB ? 1 : 0)}/2 · ${pageCount(t)}쪽</span></a>`;
+      <span class="badge ${t.done ? 'ok' : ''}">${t.done ? '완료' : '작성 중'} · ${tallyTxt(t.chk)}${useX(t) ? ` · 추가 ${xItems(t).length}개` : ''} · 서명 ${(t.sigI ? 1 : 0) + (t.sigB ? 1 : 0)}/2 · ${pageCount(t)}쪽</span></a>`;
   }
   async function list() {
     const items = await all();
@@ -92,7 +106,7 @@ const Law = (() => {
     const t = {
       id: uid(10), kind: 'law', created: Date.now(), done: false,
       site: reg ? reg.name : site, date: today(), inspector: INSPECTOR_NAME, boss: site ? await lastBoss(site) : '',
-      chk: ITEMS.map(() => false), note: ITEMS.map(() => ''), sigI: '', sigB: '', extraOn: false, extra: []
+      chk: ITEMS.map(() => ''), note: ITEMS.map(() => ''), sigI: '', sigB: '', extraOn: false, extra: []
     };
     await save(t);
     location.replace(`#/l/${t.id}`);
@@ -113,9 +127,9 @@ const Law = (() => {
           <label>현장소장 <input name="boss" value="${esc(t.boss)}" placeholder="현장소장 이름"></label></div>
       </form>
       <div class="bar lw-bar"><h2 class="h">과태료 부과기준 요약 <small>(법 제175조 · 금액 단위 만원)</small></h2><span class="lw-count" id="cnt"></span></div>
-      <p class="hint">현장소장에게 항목을 설명하면서 <b>해당</b>하는 항목을 체크하세요. 필요하면 비고를 적습니다.</p>
-      <ol class="lw-list">${ITEMS.map((it, i) => `<li class="lw-it ${t.chk[i] ? 'on' : ''}" data-i="${i}">
-        <label class="lw-chk"><input type="checkbox" ${t.chk[i] ? 'checked' : ''}><span>해당</span></label>
+      <p class="hint">현장소장에게 항목을 설명하면서 해당여부를 고르세요: <b>○ 해당</b>, <b>△ 발생 시</b>(해당 상황이 생기면 적용), <b>미해당</b>(공백). 필요하면 비고를 적습니다.</p>
+      <ol class="lw-list">${ITEMS.map((it, i) => `<li class="lw-it ${mk(t.chk[i]) === 'o' ? 'on' : mk(t.chk[i]) === 't' ? 'tri' : ''}" data-i="${i}">
+        ${markUI(t.chk[i])}
         <div class="lw-body"><div class="lw-tx"><b>${i + 1}.</b> ${lines(it.t)}</div>${it.n ? `<div class="lw-n">${esc(it.n)}</div>` : ''}
           <div class="lw-meta"><span class="lw-law">${esc(it.law.replace(/\n/g, ' '))}</span>${amt(it)}</div>
           <input class="lw-note" placeholder="비고 (선택)" value="${esc(t.note[i] || '')}"></div>
@@ -138,7 +152,7 @@ const Law = (() => {
       <div class="row center"><button class="btn big primary" id="make"></button></div>
       <div id="out"></div>`;
     const f = $('#lf');
-    const count = () => { $('#cnt').textContent = `해당 ${t.chk.filter(Boolean).length}개 / ${ITEMS.length}개`; };
+    const count = () => { $('#cnt').textContent = tallyTxt(t.chk); };
     count();
     siteField(f.site, async () => {
       t.site = f.site.value.trim();
@@ -149,7 +163,7 @@ const Law = (() => {
     f.date.onchange = () => { t.date = f.date.value; later(); };
     $$('.lw-it').forEach(li => {
       const i = +li.dataset.i;
-      $('input[type=checkbox]', li).onchange = e => { t.chk[i] = e.target.checked; li.classList.toggle('on', e.target.checked); count(); later(); };
+      bindMark(li, () => t.chk[i], v => { t.chk[i] = v; count(); later(); });
       $('.lw-note', li).oninput = e => { t.note[i] = e.target.value; later(); };
     });
 
@@ -171,18 +185,18 @@ const Law = (() => {
     t.extra = t.extra || [];
     const makeLabel = () => `결과지 만들기 (PDF ${pageCount(t)}쪽·이미지 ${pageCount(t)}장)`;
     $('#make').textContent = makeLabel();
-    const xNew = (v = {}) => ({ t: v.t || '', law: v.law || '', note: '', chk: false });
+    const xNew = (v = {}) => ({ t: v.t || '', law: v.law || '', note: '', chk: '' });
     function drawX() {
       const ul = $('#xlist');
-      ul.innerHTML = t.extra.map((x, i) => `<li class="lw-it ${x.chk ? 'on' : ''}" data-x="${i}">
-        <label class="lw-chk"><input type="checkbox" ${x.chk ? 'checked' : ''}><span>해당</span></label>
+      ul.innerHTML = t.extra.map((x, i) => `<li class="lw-it ${mk(x.chk) === 'o' ? 'on' : mk(x.chk) === 't' ? 'tri' : ''}" data-x="${i}">
+        ${markUI(x.chk)}
         <div class="lw-body"><div class="lw-xh"><b>${i + 1}.</b><button type="button" class="btn ghost sm" data-xdel>✕ 삭제</button></div>
           <textarea data-k="t" rows="2" placeholder="준수해야 할 내용 (예: 작업발판 끝부분 안전난간 설치)">${esc(x.t)}</textarea>
           <div class="lw-xg"><input data-k="law" value="${esc(x.law)}" placeholder="관련법 (예: 안전보건규칙 제13조)"><input data-k="note" value="${esc(x.note)}" placeholder="비고 (선택)"></div></div>
       </li>`).join('') || '<li class="hint">아래 ＋ 항목 추가를 누르세요.</li>';
       $$('[data-x]', ul).forEach(li => {
         const x = t.extra[+li.dataset.x];
-        $('input[type=checkbox]', li).onchange = e => { x.chk = e.target.checked; li.classList.toggle('on', x.chk); later(); };
+        bindMark(li, () => x.chk, v => { x.chk = v; later(); });
         $$('[data-k]', li).forEach(el => el.oninput = () => { x[el.dataset.k] = el.value; later(); });
         $('[data-xdel]', li).onclick = () => {
           if (x.t.trim() && !confirm('이 항목을 삭제할까요?')) return;
@@ -289,7 +303,7 @@ const Law = (() => {
       const i = from + k;
       const amt = it.pen ? `<td colspan="4" class="lw-penc">${lines(it.pen)}${t.note[i] ? `<div class="lw-nt">${esc(t.note[i])}</div>` : ''}</td>`
         : `${it.f.map(v => `<td class="c">${lines(v)}</td>`).join('')}<td class="lw-ntc">${esc(t.note[i] || '')}</td>`;
-      return `<tr><td class="c">${i + 1}</td><td>${lines(it.t)}${it.n ? `<div class="lw-sub">${esc(it.n)}</div>` : ''}</td><td class="c">${lines(it.law)}</td>${amt}<td class="c lw-mk">${t.chk[i] ? '✔' : ''}</td></tr>`;
+      return `<tr><td class="c">${i + 1}</td><td>${lines(it.t)}${it.n ? `<div class="lw-sub">${esc(it.n)}</div>` : ''}</td><td class="c">${lines(it.law)}</td>${amt}<td class="c lw-mk">${SYM[mk(t.chk[i])]}</td></tr>`;
     }).join('');
   }
   const head = `<colgroup><col style="width:5%"><col style="width:39%"><col style="width:9%"><col style="width:6.5%"><col style="width:6.5%"><col style="width:6.5%"><col style="width:19%"><col style="width:8.5%"></colgroup>
@@ -305,27 +319,26 @@ const Law = (() => {
       <table class="tb-t lw-t lw-t3">
         <colgroup><col style="width:6%"><col style="width:50%"><col style="width:16%"><col style="width:18%"><col style="width:10%"></colgroup>
         <tr><th>NO</th><th>준수해야 할 내용</th><th>관련법</th><th>비고</th><th>해당<br>여부</th></tr>
-        ${xs.map((x, i) => `<tr><td class="c">${i + 1}</td><td>${lines(x.t)}</td><td class="c">${lines(x.law)}</td><td class="lw-ntc">${lines(x.note)}</td><td class="c lw-mk">${x.chk ? '✔' : ''}</td></tr>`).join('')}
+        ${xs.map((x, i) => `<tr><td class="c">${i + 1}</td><td>${lines(x.t)}</td><td class="c">${lines(x.law)}</td><td class="lw-ntc">${lines(x.note)}</td><td class="c lw-mk">${SYM[mk(x.chk)]}</td></tr>`).join('')}
         ${Array.from({ length: blanks }, (_, k) => `<tr><td class="c lw-blank">${xs.length + k + 1}</td><td></td><td></td><td></td><td></td></tr>`).join('')}
       </table>
-      <div class="lw-x3sum">해당 ${xs.filter(x => x.chk).length}개 / ${xs.length}개 · 지도요원 ${esc(t.inspector || INSPECTOR_NAME)} · 현장소장 ${esc(t.boss)}</div>
+      <div class="lw-x3sum"><span>${LEGEND}</span><span>${tallyTxt(xs.map(x => x.chk))} / ${xs.length}개 · 지도요원 ${esc(t.inspector || INSPECTOR_NAME)} · 현장소장 ${esc(t.boss)}</span></div>
       <div class="tb-foot"><span>사람인안전지도사사무소 · 지도요원 ${esc(t.inspector || INSPECTOR_NAME)}</span><span>3 / ${total}쪽 · 안전지도 앱으로 작성</span></div>
     </div>`;
   }
   function pageHTML(t, p) {
     if (p === 2) return page3HTML(t);
-    const n = t.chk.filter(Boolean).length;
     const top = p === 0 ? `
       <div class="lw-top">
         <div class="tb-title"><img class="tb-logo" src="img/brand-logo.png" alt="사람인 안전지도사 사무소"><h1>과태료 부과기준 요약 (법 제175조)</h1>
-          <div class="lw-info">현장명: <b>${esc(t.site)}</b> &nbsp;·&nbsp; 점검일: <b>${esc(fmtDay(t.date))}</b> &nbsp;·&nbsp; 해당 <b>${n}</b>개 / ${ITEMS.length}개${useX(t) ? ` &nbsp;·&nbsp; 추가 점검 3쪽` : ''}</div></div>
+          <div class="lw-info">현장명: <b>${esc(t.site)}</b> &nbsp;·&nbsp; 점검일: <b>${esc(fmtDay(t.date))}</b> &nbsp;·&nbsp; <b>${tallyTxt(t.chk)}</b>${useX(t) ? ` &nbsp;·&nbsp; 추가 점검 3쪽` : ''}</div></div>
         <table class="lw-sign"><tr><th>구분</th><th>성명</th><th>서명</th></tr>
           <tr><th>지도요원</th><td>${esc(t.inspector || INSPECTOR_NAME)}</td><td class="lw-sg">${sigImg(t.sigI)}</td></tr>
           <tr><th>현장소장</th><td>${esc(t.boss)}</td><td class="lw-sg">${sigImg(t.sigB)}</td></tr></table>
       </div>` : `<div class="lw-top2"><b>과태료 부과기준 요약 (법 제175조)</b><span>${esc(t.site)} · ${esc(fmtDay(t.date))}</span></div>`;
     return `<div class="lw-page">${top}
       <table class="tb-t lw-t">${head}${p === 0 ? rowsHTML(t, 0, PAGE1) : rowsHTML(t, PAGE1, ITEMS.length)}</table>
-      <div class="tb-foot"><span>사람인안전지도사사무소 · 지도요원 ${esc(t.inspector || INSPECTOR_NAME)}</span><span>${p + 1} / ${pageCount(t)}쪽 · 안전지도 앱으로 작성</span></div>
+      <div class="tb-foot"><span>사람인안전지도사사무소 · 지도요원 ${esc(t.inspector || INSPECTOR_NAME)}</span><span>해당여부: ${LEGEND} &nbsp;|&nbsp; ${p + 1} / ${pageCount(t)}쪽</span></div>
     </div>`;
   }
   async function build(t) {
