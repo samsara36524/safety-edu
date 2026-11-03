@@ -563,7 +563,7 @@ const TBM = (() => {
         img.style.width = Math.round(img.naturalWidth * s) + 'px';
         img.style.height = Math.round(img.naturalHeight * s) + 'px';
       }
-      const c = await html2canvas(page, { scale: 2, backgroundColor: '#ffffff', logging: false });
+      const c = await html2canvas(page, { scale: 2, backgroundColor: '#ffffff', logging: false, scrollX: -window.scrollX, scrollY: -window.scrollY });
       const image = c.toDataURL('image/jpeg', 0.9);
       const { jsPDF } = window.jspdf;
       const pdf = new jsPDF({ unit: 'mm', format: 'a4', compress: true });

@@ -339,6 +339,50 @@ details.more[open] { display: flex; flex-direction: column; gap: 12px; }
 /* ===== TBM ===== */
 .c-tbm { background: #5f3dc4; }
 .c-meas { background: #0b7285; }
+.c-law { background: #c2255c; }
+/* 관리체계 점검 */
+.lw-bar { margin-top: 18px; }
+.lw-bar h2 small { font-weight: 500; color: var(--muted); font-size: 13px; }
+.lw-count { font-weight: 700; color: var(--primary-2); }
+.lw-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.lw-it { display: flex; gap: 10px; align-items: flex-start; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; }
+.lw-it.on { border-color: var(--primary-2); background: #f1faf4; }
+.lw-chk { flex: none; display: flex !important; flex-direction: column !important; align-items: center; gap: 2px; font-size: 12px; font-weight: 700; color: var(--muted); cursor: pointer; }
+.lw-chk input { width: 28px; height: 28px; accent-color: var(--primary-2); margin: 0; }
+.lw-it.on .lw-chk { color: var(--primary-2); }
+.lw-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.lw-tx { font-weight: 600; line-height: 1.45; }
+.lw-n { font-size: 13px; color: #1c5fa8; }
+.lw-meta { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: flex-start; font-size: 13px; color: var(--muted); }
+.lw-law { font-weight: 700; color: #495057; }
+.lw-f { display: flex; gap: 10px; }
+.lw-f span { display: flex; gap: 3px; align-items: flex-start; }
+.lw-f small { color: #868e96; }
+.lw-f span { color: #c92a2a; font-weight: 600; }
+.lw-pen { color: #c92a2a; font-weight: 600; }
+.lw-note { width: 100%; box-sizing: border-box; font-size: 14px; padding: 6px 8px; }
+.lw-sigs { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.lw-sig { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; }
+.lw-page { width: 794px; height: 1123px; background: #fff; color: #111; padding: 24px 32px 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; font: 12px/1.35 var(--font); overflow: hidden; }
+.lw-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex: none; }
+.lw-top h1 { margin: 0; font-size: 21px; letter-spacing: -0.5px; }
+.lw-info { font-size: 12.5px; margin-top: 4px; }
+.lw-sign { border-collapse: collapse; flex: none; }
+.lw-sign th, .lw-sign td { border: 1px solid #333; text-align: center; font-size: 11.5px; padding: 1px 6px 6px; }
+.lw-sign th { background: #f1f3f5; font-weight: 700; white-space: nowrap; }
+.lw-sign td { min-width: 62px; }
+.lw-sign .lw-sg { width: 120px; height: 44px; padding: 1px; }
+.lw-sign .lw-sg img { height: 42px; width: auto; max-width: 118px; display: inline-block; }
+.lw-top2 { display: flex; justify-content: space-between; align-items: baseline; flex: none; font-size: 13px; border-bottom: 2px solid #333; padding-bottom: 4px; }
+.lw-t th { font-size: .95em; }
+.lw-t .lw-sm { font-size: .82em; font-weight: 600; }
+.lw-t td { padding: 2px 5px 6px; }
+.lw-sub { font-size: .86em; color: #1c5fa8; }
+.lw-penc { font-size: .92em; }
+.lw-nt { color: #1c5fa8; margin-top: 2px; }
+.lw-ntc { font-size: .9em; color: #1c5fa8; }
+.lw-mk { font-size: 1.5em; font-weight: 700; color: #0a6b33; }
+.lw-page .tb-foot { margin-top: auto; }
 .menu2 a:last-child:nth-child(odd) { grid-column: 1 / -1; }
 /* 장비측정 */
 .eq-pick { display: flex; flex-wrap: wrap; }

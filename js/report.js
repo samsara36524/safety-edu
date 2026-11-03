@@ -155,7 +155,7 @@ const Report = (() => {
 
       const images = [];
       for (const p of flow.pages) {
-        const c = await html2canvas(p, { scale: 2, backgroundColor: '#ffffff', logging: false, useCORS: true });
+        const c = await html2canvas(p, { scale: 2, backgroundColor: '#ffffff', logging: false, scrollX: -window.scrollX, scrollY: -window.scrollY, useCORS: true });
         images.push(c.toDataURL('image/jpeg', 0.88));
       }
       const { jsPDF } = window.jspdf;

@@ -278,7 +278,7 @@ const Meas = (() => {
           img.style.height = Math.round(img.naturalHeight * s) + 'px';
           img.style.display = 'inline-block';
         });
-        const c = await html2canvas(page, { scale: 2, backgroundColor: '#ffffff', logging: false });
+        const c = await html2canvas(page, { scale: 2, backgroundColor: '#ffffff', logging: false, scrollX: -window.scrollX, scrollY: -window.scrollY });
         canvases.push(c);
         pages.push(c.toDataURL('image/jpeg', 0.9));
       }
