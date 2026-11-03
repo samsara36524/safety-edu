@@ -50,6 +50,21 @@ const Law = (() => {
   const all = async () => (await DB.all('sessions').catch(() => [])).filter(x => x.kind === 'law').sort((a, b) => b.created - a.created);
   const lines = s => esc(s || '').replace(/\n/g, '<br>');
   const INSPECTOR_NAME = String(INSPECTOR).split(' ').pop(); // '이남석'
+  const XMAX = 20; // 3쪽 추가 항목 최대 개수
+  const XMIN_ROWS = 12; // 3쪽 표 최소 행 수 (모자라면 빈 행으로 채워 수기 기재)
+  const xItems = t => (t.extra || []).filter(x => (x.t || '').trim());
+  const useX = t => !!t.extraOn;
+  const pageCount = t => useX(t) ? 3 : 2;
+  // 3쪽 지난 항목 (현장 무관, 최근 60개)
+  const xlibGet = async () => (await DB.get('kv', 'lawExtraLib').catch(() => null)) || [];
+  async function xlibAdd(items) {
+    let lib = await xlibGet();
+    for (const it of items.slice().reverse()) {
+      const v = { t: it.t.trim(), law: (it.law || '').trim() };
+      lib = [v, ...lib.filter(x => x.t !== v.t)];
+    }
+    await DB.put('kv', lib.slice(0, 60), 'lawExtraLib');
+  }
 
   // ---------- 목록 ----------
   function card(t) {
@@ -57,12 +72,12 @@ const Law = (() => {
     return `<a class="card" href="#/l/${t.id}">
       <b><span class="cat c-law">체계</span>${esc(t.site || '(현장명 없음)')}</b>
       <span>${esc(fmtDay(t.date))} · 현장소장 ${esc(t.boss || '-')}</span>
-      <span class="badge ${t.done ? 'ok' : ''}">${t.done ? '완료' : '작성 중'} · 해당 ${n}개 / ${ITEMS.length}개 · 서명 ${(t.sigI ? 1 : 0) + (t.sigB ? 1 : 0)}/2</span></a>`;
+      <span class="badge ${t.done ? 'ok' : ''}">${t.done ? '완료' : '작성 중'} · 해당 ${n}개 / ${ITEMS.length}개${useX(t) ? ` · 추가 ${xItems(t).length}개` : ''} · 서명 ${(t.sigI ? 1 : 0) + (t.sigB ? 1 : 0)}/2 · ${pageCount(t)}쪽</span></a>`;
   }
   async function list() {
     const items = await all();
     view().innerHTML = `<div class="bar"><h1>관리체계 점검</h1><a class="btn primary" href="#/law/new">＋ 점검 시작</a></div>
-      <p class="hint">건설현장이 지켜야 할 안전보건 관리체계를 과태료 부과기준(법 제175조)으로 현장소장에게 설명하고, 해당 여부를 체크한 뒤 지도요원·현장소장 서명을 받아 2쪽 PDF와 이미지 2장으로 저장합니다.</p>
+      <p class="hint">건설현장이 지켜야 할 안전보건 관리체계를 과태료 부과기준(법 제175조)으로 현장소장에게 설명하고, 해당 여부를 체크한 뒤 지도요원·현장소장 서명을 받아 PDF와 쪽별 이미지로 저장합니다. 필요하면 3쪽에 지도요원이 추가로 점검할 준수사항을 넣습니다.</p>
       ${items.length ? `<div class="cards">${items.map(t => `<div class="rec">${card(t)}<div class="row"><button class="btn ghost sm" data-del="${t.id}">삭제</button></div></div>`).join('')}</div>` : '<p class="hint">아직 점검 기록이 없습니다.</p>'}`;
     $$('[data-del]').forEach(b => b.onclick = async () => {
       if (!confirm('이 점검 기록을 삭제할까요? (저장해 둔 PDF는 지워지지 않습니다)')) return;
@@ -77,7 +92,7 @@ const Law = (() => {
     const t = {
       id: uid(10), kind: 'law', created: Date.now(), done: false,
       site: reg ? reg.name : site, date: today(), inspector: INSPECTOR_NAME, boss: site ? await lastBoss(site) : '',
-      chk: ITEMS.map(() => false), note: ITEMS.map(() => ''), sigI: '', sigB: ''
+      chk: ITEMS.map(() => false), note: ITEMS.map(() => ''), sigI: '', sigB: '', extraOn: false, extra: []
     };
     await save(t);
     location.replace(`#/l/${t.id}`);
@@ -105,6 +120,14 @@ const Law = (() => {
           <div class="lw-meta"><span class="lw-law">${esc(it.law.replace(/\n/g, ' '))}</span>${amt(it)}</div>
           <input class="lw-note" placeholder="비고 (선택)" value="${esc(t.note[i] || '')}"></div>
       </li>`).join('')}</ol>
+      <section class="lw-x">
+        <label class="lw-xon"><input type="checkbox" id="xon" ${useX(t) ? 'checked' : ''}><span><b>3쪽 추가</b> · 지도요원이 추가로 점검할 준수사항</span></label>
+        <div id="xbox" class="${useX(t) ? '' : 'hide'}">
+          <p class="hint">준수해야 할 내용과 관련법을 넣고 해당 여부·비고를 점검합니다. 한 번 쓴 항목은 <b>지난 항목 불러오기</b>로 다시 쓸 수 있습니다. (최대 ${XMAX}개, 빈 행은 결과지에 수기 기재용으로 남습니다)</p>
+          <ol class="lw-list" id="xlist"></ol>
+          <div class="row"><button type="button" class="btn sm primary" id="xadd">＋ 항목 추가</button><button type="button" class="btn sm" id="xpast">지난 항목 불러오기</button></div>
+        </div>
+      </section>
       <h2 class="h">서명</h2>
       <div class="lw-sigs">
         <section class="lw-sig" id="sgI"><input type="hidden" name="name" value="${esc(t.inspector || INSPECTOR_NAME)}">
@@ -112,7 +135,7 @@ const Law = (() => {
         <section class="lw-sig" id="sgB"><input type="hidden" name="name" value="${esc(t.boss)}">
           <div class="sigwrap"><span>현장소장 <b class="bossname">${esc(t.boss || '(이름 입력)')}</b> 서명</span><canvas class="sigpad"></canvas><button type="button" class="btn ghost sm" data-clr>다시 쓰기</button></div></section>
       </div>
-      <div class="row center"><button class="btn big primary" id="make">결과지 만들기 (PDF 2쪽·이미지 2장)</button></div>
+      <div class="row center"><button class="btn big primary" id="make"></button></div>
       <div id="out"></div>`;
     const f = $('#lf');
     const count = () => { $('#cnt').textContent = `해당 ${t.chk.filter(Boolean).length}개 / ${ITEMS.length}개`; };
@@ -143,6 +166,68 @@ const Law = (() => {
       return { pad, store };
     };
     const sI = sigBox('sgI', 'sigI'), sB = sigBox('sgB', 'sigB');
+
+    // 3쪽 추가 항목
+    t.extra = t.extra || [];
+    const makeLabel = () => `결과지 만들기 (PDF ${pageCount(t)}쪽·이미지 ${pageCount(t)}장)`;
+    $('#make').textContent = makeLabel();
+    const xNew = (v = {}) => ({ t: v.t || '', law: v.law || '', note: '', chk: false });
+    function drawX() {
+      const ul = $('#xlist');
+      ul.innerHTML = t.extra.map((x, i) => `<li class="lw-it ${x.chk ? 'on' : ''}" data-x="${i}">
+        <label class="lw-chk"><input type="checkbox" ${x.chk ? 'checked' : ''}><span>해당</span></label>
+        <div class="lw-body"><div class="lw-xh"><b>${i + 1}.</b><button type="button" class="btn ghost sm" data-xdel>✕ 삭제</button></div>
+          <textarea data-k="t" rows="2" placeholder="준수해야 할 내용 (예: 작업발판 끝부분 안전난간 설치)">${esc(x.t)}</textarea>
+          <div class="lw-xg"><input data-k="law" value="${esc(x.law)}" placeholder="관련법 (예: 안전보건규칙 제13조)"><input data-k="note" value="${esc(x.note)}" placeholder="비고 (선택)"></div></div>
+      </li>`).join('') || '<li class="hint">아래 ＋ 항목 추가를 누르세요.</li>';
+      $$('[data-x]', ul).forEach(li => {
+        const x = t.extra[+li.dataset.x];
+        $('input[type=checkbox]', li).onchange = e => { x.chk = e.target.checked; li.classList.toggle('on', x.chk); later(); };
+        $$('[data-k]', li).forEach(el => el.oninput = () => { x[el.dataset.k] = el.value; later(); });
+        $('[data-xdel]', li).onclick = () => {
+          if (x.t.trim() && !confirm('이 항목을 삭제할까요?')) return;
+          t.extra.splice(+li.dataset.x, 1); later(); drawX();
+        };
+      });
+    }
+    $('#xon').onchange = e => {
+      t.extraOn = e.target.checked;
+      $('#xbox').classList.toggle('hide', !t.extraOn);
+      if (t.extraOn && !t.extra.length) { t.extra.push(xNew()); drawX(); }
+      $('#make').textContent = makeLabel(); later();
+    };
+    $('#xadd').onclick = () => {
+      if (t.extra.length >= XMAX) { toast(`최대 ${XMAX}개까지 넣을 수 있습니다.`); return; }
+      t.extra.push(xNew()); later(); drawX();
+      const last = $$('#xlist [data-k=t]').pop(); if (last) last.focus();
+    };
+    $('#xpast').onclick = async () => {
+      const m = modal(`<h2>지난 항목 불러오기</h2>
+        <input class="pp-q" placeholder="검색 (초성 검색 가능)"><ul class="pp-list lw-xpick"></ul>
+        <button class="btn primary big" id="xp-ok" disabled>선택한 항목 넣기</button>`, { wide: true });
+      const q = $('.pp-q', m.el), ul = $('.pp-list', m.el), ok = $('#xp-ok', m.el);
+      const picked = new Set();
+      const have = new Set(t.extra.map(x => x.t.trim()));
+      const draw = async () => {
+        const lib = await xlibGet();
+        const hit = lib.filter(v => !q.value.trim() || Search.match(v.t, q.value) || Search.match(v.law, q.value));
+        ul.innerHTML = hit.length ? hit.map(v => `<li><label class="pp-use lw-xp ${have.has(v.t) ? 'off' : ''}"><input type="checkbox" value="${esc(v.t)}" ${picked.has(v.t) ? 'checked' : ''} ${have.has(v.t) ? 'disabled' : ''}><span>${lines(v.t)}${v.law ? `<small>${esc(v.law)}</small>` : ''}${have.has(v.t) ? '<small>이미 들어 있음</small>' : ''}</span></label><button type="button" class="pdel" data-rm="${esc(v.t)}" title="목록에서 삭제">✕</button></li>`).join('')
+          : `<li class="hint">${lib.length ? '검색 결과가 없습니다.' : '아직 저장된 항목이 없습니다. 3쪽 항목을 넣고 결과지를 만들면 여기에 쌓입니다.'}</li>`;
+        $$('input[type=checkbox]', ul).forEach(c => c.onchange = () => { c.checked ? picked.add(c.value) : picked.delete(c.value); ok.disabled = !picked.size; ok.textContent = picked.size ? `선택한 ${picked.size}개 넣기` : '선택한 항목 넣기'; });
+        $$('[data-rm]', ul).forEach(b => b.onclick = async () => { await DB.put('kv', (await xlibGet()).filter(v => v.t !== b.dataset.rm), 'lawExtraLib'); picked.delete(b.dataset.rm); draw(); });
+      };
+      q.oninput = draw; draw();
+      ok.onclick = async () => {
+        const lib = await xlibGet();
+        // 내용 없는 빈 행은 먼저 채운다
+        t.extra = t.extra.filter(x => x.t.trim() || x.law.trim() || x.note.trim());
+        let added = 0;
+        for (const v of lib.filter(v => picked.has(v.t))) { if (t.extra.length >= XMAX) break; t.extra.push(xNew(v)); added++; }
+        if (added < picked.size) toast(`최대 ${XMAX}개까지라 ${added}개만 넣었습니다.`);
+        m.close(); await save(t); drawX();
+      };
+    };
+    drawX();
     f.boss.addEventListener('input', () => {
       t.boss = f.boss.value.trim();
       $('#sgB .bossname').textContent = t.boss || '(이름 입력)';
@@ -155,6 +240,7 @@ const Law = (() => {
       sI.store(); sB.store(); clearTimeout(timer);
       if (!t.site) { toast('현장명을 입력하세요.'); f.site.focus(); return; }
       if (!t.boss) { toast('현장소장 이름을 입력하세요.'); f.boss.focus(); return; }
+      if (useX(t) && !xItems(t).length && !confirm('3쪽에 넣은 항목이 없습니다. 빈 양식(수기 기재용)으로 3쪽을 넣을까요?')) return;
       const miss = [!t.sigI && '지도요원', !t.sigB && '현장소장'].filter(Boolean);
       if (miss.length && !confirm(`${miss.join('·')} 서명이 없습니다. 서명 칸을 비운 채로 만들까요?`)) return;
       const btn = $('#make'); btn.disabled = true; btn.textContent = '만드는 중…';
@@ -164,33 +250,33 @@ const Law = (() => {
         const at = Date.now();
         if (t.sigI) await Registry.addSig(t.inspector || INSPECTOR_NAME, t.sigI, t.site, at);
         if (t.sigB) await Registry.addSig(t.boss, t.sigB, t.site, at);
+        if (useX(t)) await xlibAdd(xItems(t));
         const res = await build(t);
         t.done = true; await save(t);
         const name = fileName(t);
-        $('#out').innerHTML = `<h2 class="h">미리보기 <small>(2쪽)</small></h2>
+        const N = res.pages.length;
+        $('#out').innerHTML = `<h2 class="h">미리보기 <small>(${N}쪽)</small></h2>
           <div class="tbm-prev">${res.pages.map(p => `<img src="${p}" alt="관리체계 점검 결과">`).join('')}</div>
           <div class="save-actions">
-            <button class="btn primary" id="sv-pdf">PDF 저장 (2쪽)</button>
+            <button class="btn primary" id="sv-pdf">PDF 저장 (${N}쪽)</button>
             <button class="btn" id="sv-share">PDF 공유 (카카오톡·메일 등)</button>
-            <button class="btn ghost" id="sv-jpg1">1쪽 이미지(JPG) 저장</button>
-            <button class="btn ghost" id="sv-jpg2">2쪽 이미지(JPG) 저장</button>
-            <button class="btn ghost" id="sv-imgshare">이미지 2장 공유</button>
+            ${res.pages.map((_, i) => `<button class="btn ghost" data-jpg="${i}">${i + 1}쪽 이미지(JPG) 저장</button>`).join('')}
+            <button class="btn ghost" id="sv-imgshare">이미지 ${N}장 공유</button>
           </div>`;
         const imgFile = async i => new File([await dataUrlToBlob(res.pages[i])], `${name}_${i + 1}쪽.jpg`, { type: 'image/jpeg' });
         $('#sv-pdf').onclick = () => downloadBlob(res.pdf, name + '.pdf');
-        $('#sv-jpg1').onclick = async () => downloadBlob(await imgFile(0), `${name}_1쪽.jpg`);
-        $('#sv-jpg2').onclick = async () => downloadBlob(await imgFile(1), `${name}_2쪽.jpg`);
+        $$('[data-jpg]').forEach(b => b.onclick = async () => downloadBlob(await imgFile(+b.dataset.jpg), `${name}_${+b.dataset.jpg + 1}쪽.jpg`));
         const share = async files => {
           if (navigator.canShare && navigator.canShare({ files })) {
             try { await navigator.share({ files, title: name }); } catch (e) { if (e.name !== 'AbortError') toast('공유 실패: ' + e.message); }
           } else toast('이 브라우저는 파일 공유를 지원하지 않습니다. 저장 버튼을 이용하세요.');
         };
         $('#sv-share').onclick = () => share([new File([res.pdf], name + '.pdf', { type: 'application/pdf' })]);
-        $('#sv-imgshare').onclick = async () => share([await imgFile(0), await imgFile(1)]);
+        $('#sv-imgshare').onclick = async () => share(await Promise.all(res.pages.map((_, i) => imgFile(i))));
         $('#out').scrollIntoView({ behavior: 'smooth' });
         btn.textContent = '다시 만들기';
       } catch (e) {
-        console.error(e); toast('결과지를 만들지 못했습니다: ' + e.message, 5000); btn.textContent = '결과지 만들기 (PDF 2쪽·이미지 2장)';
+        console.error(e); toast('결과지를 만들지 못했습니다: ' + e.message, 5000); btn.textContent = makeLabel();
       }
       btn.disabled = false;
     };
@@ -210,19 +296,36 @@ const Law = (() => {
     <tr><th rowspan="2">NO</th><th rowspan="2">위반행위 세부내용</th><th rowspan="2">관련법</th><th colspan="3">과태료 금액 (만원)</th><th rowspan="2">비고</th><th rowspan="2">해당<br>여부</th></tr>
     <tr><th class="lw-sm">1차위반</th><th class="lw-sm">2차위반</th><th class="lw-sm">3차위반</th></tr>`;
   const sigImg = g => g ? `<img src="${Sig.toImage(g, 400, 160)}">` : '';
+  // 3쪽: 지도요원 추가 준수사항
+  function page3HTML(t) {
+    const xs = xItems(t), total = pageCount(t);
+    const blanks = Math.max(0, XMIN_ROWS - xs.length);
+    return `<div class="lw-page">
+      <div class="lw-top2"><b>추가 준수사항 점검 <small>(지도요원 지도사항)</small></b><span>${esc(t.site)} · ${esc(fmtDay(t.date))}</span></div>
+      <table class="tb-t lw-t lw-t3">
+        <colgroup><col style="width:6%"><col style="width:50%"><col style="width:16%"><col style="width:18%"><col style="width:10%"></colgroup>
+        <tr><th>NO</th><th>준수해야 할 내용</th><th>관련법</th><th>비고</th><th>해당<br>여부</th></tr>
+        ${xs.map((x, i) => `<tr><td class="c">${i + 1}</td><td>${lines(x.t)}</td><td class="c">${lines(x.law)}</td><td class="lw-ntc">${lines(x.note)}</td><td class="c lw-mk">${x.chk ? '✔' : ''}</td></tr>`).join('')}
+        ${Array.from({ length: blanks }, (_, k) => `<tr><td class="c lw-blank">${xs.length + k + 1}</td><td></td><td></td><td></td><td></td></tr>`).join('')}
+      </table>
+      <div class="lw-x3sum">해당 ${xs.filter(x => x.chk).length}개 / ${xs.length}개 · 지도요원 ${esc(t.inspector || INSPECTOR_NAME)} · 현장소장 ${esc(t.boss)}</div>
+      <div class="tb-foot"><span>사람인안전지도사사무소 · 지도요원 ${esc(t.inspector || INSPECTOR_NAME)}</span><span>3 / ${total}쪽 · 안전지도 앱으로 작성</span></div>
+    </div>`;
+  }
   function pageHTML(t, p) {
+    if (p === 2) return page3HTML(t);
     const n = t.chk.filter(Boolean).length;
     const top = p === 0 ? `
       <div class="lw-top">
         <div class="tb-title"><img class="tb-logo" src="img/brand-logo.png" alt="사람인 안전지도사 사무소"><h1>과태료 부과기준 요약 (법 제175조)</h1>
-          <div class="lw-info">현장명: <b>${esc(t.site)}</b> &nbsp;·&nbsp; 점검일: <b>${esc(fmtDay(t.date))}</b> &nbsp;·&nbsp; 해당 <b>${n}</b>개 / ${ITEMS.length}개</div></div>
+          <div class="lw-info">현장명: <b>${esc(t.site)}</b> &nbsp;·&nbsp; 점검일: <b>${esc(fmtDay(t.date))}</b> &nbsp;·&nbsp; 해당 <b>${n}</b>개 / ${ITEMS.length}개${useX(t) ? ` &nbsp;·&nbsp; 추가 점검 3쪽` : ''}</div></div>
         <table class="lw-sign"><tr><th>구분</th><th>성명</th><th>서명</th></tr>
           <tr><th>지도요원</th><td>${esc(t.inspector || INSPECTOR_NAME)}</td><td class="lw-sg">${sigImg(t.sigI)}</td></tr>
           <tr><th>현장소장</th><td>${esc(t.boss)}</td><td class="lw-sg">${sigImg(t.sigB)}</td></tr></table>
       </div>` : `<div class="lw-top2"><b>과태료 부과기준 요약 (법 제175조)</b><span>${esc(t.site)} · ${esc(fmtDay(t.date))}</span></div>`;
     return `<div class="lw-page">${top}
       <table class="tb-t lw-t">${head}${p === 0 ? rowsHTML(t, 0, PAGE1) : rowsHTML(t, PAGE1, ITEMS.length)}</table>
-      <div class="tb-foot"><span>사람인안전지도사사무소 · 지도요원 ${esc(t.inspector || INSPECTOR_NAME)}</span><span>${p + 1} / 2쪽 · 안전지도 앱으로 작성</span></div>
+      <div class="tb-foot"><span>사람인안전지도사사무소 · 지도요원 ${esc(t.inspector || INSPECTOR_NAME)}</span><span>${p + 1} / ${pageCount(t)}쪽 · 안전지도 앱으로 작성</span></div>
     </div>`;
   }
   async function build(t) {
@@ -231,16 +334,17 @@ const Law = (() => {
     document.body.appendChild(root);
     const pages = [];
     try {
-      for (let p = 0; p < 2; p++) {
+      for (let p = 0; p < pageCount(t); p++) {
         root.innerHTML = pageHTML(t, p);
         const page = $('.lw-page', root), tbl = $('.lw-t', page), foot = $('.tb-foot', page);
         await Promise.all([...root.querySelectorAll('img')].map(img => img.complete ? null : new Promise(r => { img.onload = img.onerror = r; setTimeout(r, 4000); })));
         // 표가 쪽을 넘치면 글씨를 줄이고, 남으면 행 높이를 늘려 쪽을 채운다
-        const room = () => foot.offsetTop - tbl.offsetTop - 6;
-        let fs = 12;
+        const sum = $('.lw-x3sum', page);
+        const room = () => foot.offsetTop - tbl.offsetTop - (sum ? sum.offsetHeight + 6 : 0) - 6;
+        let fs = p === 2 ? 13.5 : 12;
         tbl.style.fontSize = fs + 'px';
         while (tbl.offsetHeight > room() && fs > 8) { fs -= 0.5; tbl.style.fontSize = fs + 'px'; }
-        const rows = $$('tr', tbl).slice(2), extra = room() - tbl.offsetHeight;
+        const rows = $$('tr', tbl).filter(r => !r.querySelector('th')), extra = room() - tbl.offsetHeight;
         if (extra > 0) rows.forEach(r => { r.style.height = (r.offsetHeight + Math.floor(extra / rows.length)) + 'px'; });
         const c = await html2canvas(page, { scale: 2, backgroundColor: '#ffffff', logging: false, scrollX: -window.scrollX, scrollY: -window.scrollY });
         pages.push(c.toDataURL('image/jpeg', 0.9));

@@ -383,6 +383,25 @@ details.more[open] { display: flex; flex-direction: column; gap: 12px; }
 .lw-ntc { font-size: .9em; color: #1c5fa8; }
 .lw-mk { font-size: 1.5em; font-weight: 700; color: #0a6b33; }
 .lw-page .tb-foot { margin-top: auto; }
+.lw-x { margin: 16px 0 6px; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; }
+.lw-xon { display: flex !important; flex-direction: row !important; align-items: center; gap: 10px; cursor: pointer; font-size: 16px; }
+.lw-xon input { width: 24px; height: 24px; accent-color: var(--primary-2); margin: 0; flex: none; }
+#xbox { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+#xbox.hide { display: none; }
+.lw-xh { display: flex; justify-content: space-between; align-items: center; }
+.lw-xh .btn { min-height: 28px; padding: 2px 8px; }
+.lw-body textarea { width: 100%; box-sizing: border-box; font: inherit; }
+.lw-xg { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; }
+.lw-xg input { width: 100%; box-sizing: border-box; font-size: 14px; padding: 6px 8px; }
+.lw-xp { display: flex !important; flex-direction: row !important; gap: 10px; align-items: flex-start; font-weight: 400; }
+.lw-xp input { width: 22px; height: 22px; flex: none; margin: 1px 0 0; accent-color: var(--primary-2); }
+.lw-xp span { display: flex; flex-direction: column; gap: 2px; }
+.lw-xp small { color: var(--muted); }
+.lw-xp.off { opacity: .55; }
+.lw-t3 td { vertical-align: middle; }
+.lw-blank { color: #adb5bd; }
+.lw-x3sum { flex: none; font-size: 12px; color: #333; text-align: right; }
+.lw-top2 small { font-weight: 500; color: #555; font-size: .85em; }
 .menu2 a:last-child:nth-child(odd) { grid-column: 1 / -1; }
 /* 장비측정 */
 .eq-pick { display: flex; flex-wrap: wrap; }
