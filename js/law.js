@@ -69,15 +69,30 @@ const Law = (() => {
   const xItems = t => (t.extra || []).filter(x => (x.t || '').trim());
   const useX = t => !!t.extraOn;
   const pageCount = t => useX(t) ? 3 : 2;
-  // 3쪽 지난 항목 (현장 무관, 최근 60개)
-  const xlibGet = async () => (await DB.get('kv', 'lawExtraLib').catch(() => null)) || [];
-  async function xlibAdd(items) {
-    let lib = await xlibGet();
-    for (const it of items.slice().reverse()) {
-      const v = { t: it.t.trim(), law: (it.law || '').trim() };
-      lib = [v, ...lib.filter(x => x.t !== v.t)];
-    }
-    await DB.put('kv', lib.slice(0, 60), 'lawExtraLib');
+  // 3쪽 공통 항목: 내용·관련법은 모든 현장 점검에 공통, 해당여부·비고는 점검(현장)마다 따로 기록
+  const XKEY = 'lawXCommon';
+  async function xmGet() {
+    let m = await DB.get('kv', XKEY).catch(() => null);
+    if (m) return m;
+    // 처음 한 번: 예전 기록의 3쪽 항목과 '지난 항목'을 공통 목록으로 옮긴다
+    const seen = new Map();
+    const push = v => { const k = (v.t || '').trim(); if (k && !seen.has(k)) seen.set(k, { id: uid(6), t: k, law: (v.law || '').trim() }); };
+    for (const r of (await all()).slice().reverse()) for (const x of r.extra || []) push(x);
+    for (const v of (await DB.get('kv', 'lawExtraLib').catch(() => null)) || []) push(v);
+    m = [...seen.values()].slice(0, XMAX);
+    await DB.put('kv', m, XKEY);
+    return m;
+  }
+  const xmPut = m => DB.put('kv', m, XKEY);
+  // 공통 항목 + 이 점검의 해당여부·비고 → t.extra (결과지·목록용)
+  function xMerge(t, m) {
+    t.xv = t.xv || {};
+    const old = new Map((t.extra || []).map(x => [(x.t || '').trim(), x]));
+    t.extra = m.map(it => {
+      let v = t.xv[it.id];
+      if (!v) { const o = old.get(it.t.trim()); v = t.xv[it.id] = { chk: o ? mk(o.chk) : '', note: o ? o.note || '' : '' }; }
+      return { id: it.id, t: it.t, law: it.law, chk: v.chk, note: v.note };
+    });
   }
 
   // ---------- 목록 ----------
@@ -137,9 +152,9 @@ const Law = (() => {
       <section class="lw-x">
         <label class="lw-xon"><input type="checkbox" id="xon" ${useX(t) ? 'checked' : ''}><span><b>3쪽 추가</b> · 지도요원이 추가로 점검할 준수사항</span></label>
         <div id="xbox" class="${useX(t) ? '' : 'hide'}">
-          <p class="hint">준수해야 할 내용과 관련법을 넣고 해당 여부·비고를 점검합니다. 한 번 쓴 항목은 <b>지난 항목 불러오기</b>로 다시 쓸 수 있습니다. (최대 ${XMAX}개, 빈 행은 결과지에 수기 기재용으로 남습니다)</p>
+          <p class="hint"><b>공통 항목</b>: 여기 등록한 내용·관련법은 <b>모든 현장</b>의 3쪽 점검에 똑같이 불러와집니다. 해당여부·비고만 이 현장에 따로 기록됩니다. (최대 ${XMAX}개, 결과지의 남는 행은 수기 기재용)</p>
           <ol class="lw-list" id="xlist"></ol>
-          <div class="row"><button type="button" class="btn sm primary" id="xadd">＋ 항목 추가</button><button type="button" class="btn sm" id="xpast">지난 항목 불러오기</button></div>
+          <div class="row"><button type="button" class="btn sm primary" id="xadd">＋ 공통 항목 추가</button></div>
         </div>
       </section>
       <h2 class="h">서명</h2>
@@ -181,66 +196,50 @@ const Law = (() => {
     };
     const sI = sigBox('sgI', 'sigI'), sB = sigBox('sgB', 'sigB');
 
-    // 3쪽 추가 항목
-    t.extra = t.extra || [];
+    // 3쪽 공통 항목
+    const master = (await xmGet()).filter(it => it.t.trim() || it.law.trim());
+    xMerge(t, master);
     const makeLabel = () => `결과지 만들기 (PDF ${pageCount(t)}쪽·이미지 ${pageCount(t)}장)`;
     $('#make').textContent = makeLabel();
-    const xNew = (v = {}) => ({ t: v.t || '', law: v.law || '', note: '', chk: '' });
+    let mtimer = 0;
+    const saveMaster = () => { clearTimeout(mtimer); mtimer = setTimeout(() => xmPut(master), 400); };
+    const sync = () => { xMerge(t, master); later(); };
     function drawX() {
       const ul = $('#xlist');
-      ul.innerHTML = t.extra.map((x, i) => `<li class="lw-it ${mk(x.chk) === 'o' ? 'on' : mk(x.chk) === 't' ? 'tri' : ''}" data-x="${i}">
-        ${markUI(x.chk)}
-        <div class="lw-body"><div class="lw-xh"><b>${i + 1}.</b><button type="button" class="btn ghost sm" data-xdel>✕ 삭제</button></div>
-          <textarea data-k="t" rows="2" placeholder="준수해야 할 내용 (예: 작업발판 끝부분 안전난간 설치)">${esc(x.t)}</textarea>
-          <div class="lw-xg"><input data-k="law" value="${esc(x.law)}" placeholder="관련법 (예: 안전보건규칙 제13조)"><input data-k="note" value="${esc(x.note)}" placeholder="비고 (선택)"></div></div>
-      </li>`).join('') || '<li class="hint">아래 ＋ 항목 추가를 누르세요.</li>';
+      ul.innerHTML = master.map((it, i) => {
+        const v = t.xv[it.id] || {};
+        return `<li class="lw-it ${mk(v.chk) === 'o' ? 'on' : mk(v.chk) === 't' ? 'tri' : ''}" data-x="${it.id}">
+        ${markUI(v.chk)}
+        <div class="lw-body"><div class="lw-xh"><b>${i + 1}. <small class="lw-common">공통</small></b><button type="button" class="btn ghost sm" data-xdel>✕ 삭제</button></div>
+          <textarea data-m="t" rows="2" placeholder="준수해야 할 내용 (예: 작업발판 끝부분 안전난간 설치)">${esc(it.t)}</textarea>
+          <div class="lw-xg"><input data-m="law" value="${esc(it.law)}" placeholder="관련법 (예: 안전보건규칙 제13조)"><input data-v-note value="${esc(v.note || '')}" placeholder="비고 (이 현장만)"></div></div>
+      </li>`;
+      }).join('') || '<li class="hint">아래 ＋ 공통 항목 추가를 누르세요.</li>';
       $$('[data-x]', ul).forEach(li => {
-        const x = t.extra[+li.dataset.x];
-        bindMark(li, () => x.chk, v => { x.chk = v; later(); });
-        $$('[data-k]', li).forEach(el => el.oninput = () => { x[el.dataset.k] = el.value; later(); });
-        $('[data-xdel]', li).onclick = () => {
-          if (x.t.trim() && !confirm('이 항목을 삭제할까요?')) return;
-          t.extra.splice(+li.dataset.x, 1); later(); drawX();
+        const it = master.find(x => x.id === li.dataset.x);
+        const val = () => (t.xv[it.id] = t.xv[it.id] || { chk: '', note: '' });
+        bindMark(li, () => val().chk, v => { val().chk = v; sync(); });
+        $('[data-v-note]', li).oninput = e => { val().note = e.target.value; sync(); };
+        $$('[data-m]', li).forEach(el => el.oninput = () => { it[el.dataset.m] = el.value; saveMaster(); sync(); });
+        $('[data-xdel]', li).onclick = async () => {
+          if (it.t.trim() && !confirm('이 항목을 모든 현장의 3쪽 점검에서 삭제할까요?')) return;
+          master.splice(master.indexOf(it), 1); delete t.xv[it.id];
+          await xmPut(master); sync(); drawX();
         };
       });
     }
+    const addItem = async () => {
+      if (master.length >= XMAX) { toast(`최대 ${XMAX}개까지 넣을 수 있습니다.`); return; }
+      master.push({ id: uid(6), t: '', law: '' }); await xmPut(master); sync(); drawX();
+      const last = $$('#xlist [data-m=t]').pop(); if (last) last.focus();
+    };
     $('#xon').onchange = e => {
       t.extraOn = e.target.checked;
       $('#xbox').classList.toggle('hide', !t.extraOn);
-      if (t.extraOn && !t.extra.length) { t.extra.push(xNew()); drawX(); }
+      if (t.extraOn && !master.length) addItem();
       $('#make').textContent = makeLabel(); later();
     };
-    $('#xadd').onclick = () => {
-      if (t.extra.length >= XMAX) { toast(`최대 ${XMAX}개까지 넣을 수 있습니다.`); return; }
-      t.extra.push(xNew()); later(); drawX();
-      const last = $$('#xlist [data-k=t]').pop(); if (last) last.focus();
-    };
-    $('#xpast').onclick = async () => {
-      const m = modal(`<h2>지난 항목 불러오기</h2>
-        <input class="pp-q" placeholder="검색 (초성 검색 가능)"><ul class="pp-list lw-xpick"></ul>
-        <button class="btn primary big" id="xp-ok" disabled>선택한 항목 넣기</button>`, { wide: true });
-      const q = $('.pp-q', m.el), ul = $('.pp-list', m.el), ok = $('#xp-ok', m.el);
-      const picked = new Set();
-      const have = new Set(t.extra.map(x => x.t.trim()));
-      const draw = async () => {
-        const lib = await xlibGet();
-        const hit = lib.filter(v => !q.value.trim() || Search.match(v.t, q.value) || Search.match(v.law, q.value));
-        ul.innerHTML = hit.length ? hit.map(v => `<li><label class="pp-use lw-xp ${have.has(v.t) ? 'off' : ''}"><input type="checkbox" value="${esc(v.t)}" ${picked.has(v.t) ? 'checked' : ''} ${have.has(v.t) ? 'disabled' : ''}><span>${lines(v.t)}${v.law ? `<small>${esc(v.law)}</small>` : ''}${have.has(v.t) ? '<small>이미 들어 있음</small>' : ''}</span></label><button type="button" class="pdel" data-rm="${esc(v.t)}" title="목록에서 삭제">✕</button></li>`).join('')
-          : `<li class="hint">${lib.length ? '검색 결과가 없습니다.' : '아직 저장된 항목이 없습니다. 3쪽 항목을 넣고 결과지를 만들면 여기에 쌓입니다.'}</li>`;
-        $$('input[type=checkbox]', ul).forEach(c => c.onchange = () => { c.checked ? picked.add(c.value) : picked.delete(c.value); ok.disabled = !picked.size; ok.textContent = picked.size ? `선택한 ${picked.size}개 넣기` : '선택한 항목 넣기'; });
-        $$('[data-rm]', ul).forEach(b => b.onclick = async () => { await DB.put('kv', (await xlibGet()).filter(v => v.t !== b.dataset.rm), 'lawExtraLib'); picked.delete(b.dataset.rm); draw(); });
-      };
-      q.oninput = draw; draw();
-      ok.onclick = async () => {
-        const lib = await xlibGet();
-        // 내용 없는 빈 행은 먼저 채운다
-        t.extra = t.extra.filter(x => x.t.trim() || x.law.trim() || x.note.trim());
-        let added = 0;
-        for (const v of lib.filter(v => picked.has(v.t))) { if (t.extra.length >= XMAX) break; t.extra.push(xNew(v)); added++; }
-        if (added < picked.size) toast(`최대 ${XMAX}개까지라 ${added}개만 넣었습니다.`);
-        m.close(); await save(t); drawX();
-      };
-    };
+    $('#xadd').onclick = addItem;
     drawX();
     f.boss.addEventListener('input', () => {
       t.boss = f.boss.value.trim();
@@ -252,6 +251,7 @@ const Law = (() => {
     $('#make').onclick = async () => {
       clearTimeout(timer);
       sI.store(); sB.store(); clearTimeout(timer);
+      xMerge(t, master.filter(it => it.t.trim()));
       if (!t.site) { toast('현장명을 입력하세요.'); f.site.focus(); return; }
       if (!t.boss) { toast('현장소장 이름을 입력하세요.'); f.boss.focus(); return; }
       if (useX(t) && !xItems(t).length && !confirm('3쪽에 넣은 항목이 없습니다. 빈 양식(수기 기재용)으로 3쪽을 넣을까요?')) return;
@@ -264,7 +264,8 @@ const Law = (() => {
         const at = Date.now();
         if (t.sigI) await Registry.addSig(t.inspector || INSPECTOR_NAME, t.sigI, t.site, at);
         if (t.sigB) await Registry.addSig(t.boss, t.sigB, t.site, at);
-        if (useX(t)) await xlibAdd(xItems(t));
+        clearTimeout(mtimer); await xmPut(master.filter(it => it.t.trim() || it.law.trim()));
+        xMerge(t, await xmGet());
         const res = await build(t);
         t.done = true; await save(t);
         const name = fileName(t);
