@@ -99,13 +99,13 @@ const Law = (() => {
   function card(t) {
     const n = t.chk.filter(v => mk(v)).length;
     return `<a class="card" href="#/l/${t.id}">
-      <b><span class="cat c-law">체계</span>${esc(t.site || '(현장명 없음)')}</b>
+      <b><span class="cat c-law">산안법</span>${esc(t.site || '(현장명 없음)')}</b>
       <span>${esc(fmtDay(t.date))} · 현장소장 ${esc(t.boss || '-')}</span>
       <span class="badge ${t.done ? 'ok' : ''}">${t.done ? '완료' : '작성 중'} · ${tallyTxt(t.chk)}${useX(t) ? ` · 추가 ${xItems(t).length}개` : ''} · 서명 ${(t.sigI ? 1 : 0) + (t.sigB ? 1 : 0)}/2 · ${pageCount(t)}쪽</span></a>`;
   }
   async function list() {
     const items = await all();
-    view().innerHTML = `<div class="bar"><h1>관리체계 점검</h1><a class="btn primary" href="#/law/new">＋ 점검 시작</a></div>
+    view().innerHTML = `<div class="bar"><h1>산안법 관리체계점검</h1><a class="btn primary" href="#/law/new">＋ 점검 시작</a></div>
       <p class="hint">건설현장이 지켜야 할 안전보건 관리체계를 과태료 부과기준(법 제175조)으로 현장소장에게 설명하고, 해당 여부를 체크한 뒤 지도요원·현장소장 서명을 받아 PDF와 쪽별 이미지로 저장합니다. 필요하면 3쪽에 지도요원이 추가로 점검할 준수사항을 넣습니다.</p>
       ${items.length ? `<div class="cards">${items.map(t => `<div class="rec">${card(t)}<div class="row"><button class="btn ghost sm" data-del="${t.id}">삭제</button></div></div>`).join('')}</div>` : '<p class="hint">아직 점검 기록이 없습니다.</p>'}`;
     $$('[data-del]').forEach(b => b.onclick = async () => {
@@ -134,7 +134,7 @@ const Law = (() => {
     let timer = 0;
     const later = () => { clearTimeout(timer); timer = setTimeout(() => save(t), 400); };
     const amt = it => it.pen ? `<span class="lw-pen">${lines(it.pen)}</span>` : `<span class="lw-f">${['1차', '2차', '3차'].map((k, i) => `<span><small>${k}</small>${lines(it.f[i])}</span>`).join('')}</span>`;
-    view().innerHTML = `<div class="bar"><h1>관리체계 점검</h1><a class="btn ghost sm" href="#/law">목록</a></div>
+    view().innerHTML = `<div class="bar"><h1>산안법 관리체계점검</h1><a class="btn ghost sm" href="#/law">목록</a></div>
       <form class="form" id="lf">
         <label>현장명 <input name="site" required value="${esc(t.site)}" placeholder="현장명 입력 또는 검색 (초성 검색 가능)"></label>
         <div class="grid3"><label>점검일 <input name="date" type="date" value="${esc(t.date)}"></label>
@@ -296,7 +296,7 @@ const Law = (() => {
       btn.disabled = false;
     };
   }
-  const fileName = t => `관리체계점검_${(t.site || '현장').replace(/[\\/:*?"<>|]/g, '_')}_${(t.date || '').replace(/-/g, '')}`;
+  const fileName = t => `산안법관리체계점검_${(t.site || '현장').replace(/[\\/:*?"<>|]/g, '_')}_${(t.date || '').replace(/-/g, '')}`;
 
   // ---------- 결과지 (A4 2쪽) ----------
   function rowsHTML(t, from, to) {

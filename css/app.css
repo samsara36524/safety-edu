@@ -340,6 +340,22 @@ details.more[open] { display: flex; flex-direction: column; gap: 12px; }
 .c-tbm { background: #5f3dc4; }
 .c-meas { background: #0b7285; }
 .c-law { background: #c2255c; }
+.c-sapa { background: #5c940d; }
+/* 중처법 관리체계점검 */
+.lw-it.bad { border-color: #c92a2a; background: #fff5f5; }
+.lw-mkg button[data-v="x"].on { background: #c92a2a; border-color: #c92a2a; color: #fff; }
+.sp-mkg { width: 70px; }
+.sp-g { margin: 14px 0 6px; }
+.sp-gh { margin: 0 0 8px; font-size: 18px; padding: 6px 10px; background: #e9f5ec; border-left: 4px solid var(--primary-2); border-radius: 6px; }
+.sp-s { margin: 0 0 12px; }
+.sp-sh { font-weight: 600; margin: 4px 0 6px; }
+.sp-sh small { color: var(--muted); font-weight: 500; margin-left: 4px; }
+.sp-pts summary { cursor: pointer; font-size: 13px; color: var(--primary-2); font-weight: 600; }
+.sp-pts ul { margin: 4px 0 2px; padding-left: 18px; font-size: 13px; color: #444; }
+.sp-t .sp-grow td { background: #e9f0e2; font-weight: 700; padding: 2px 8px 5px; }
+.sp-t .sp-sub { font-size: .9em; vertical-align: middle; text-align: center; background: #fafbfc; }
+.sp-t .sp-law { font-size: .82em; color: #1c5fa8; margin-top: 2px; }
+.sp-t .sp-no { font-size: .9em; white-space: nowrap; }
 /* 관리체계 점검 */
 .lw-bar { margin-top: 18px; }
 .lw-bar h2 small { font-weight: 500; color: var(--muted); font-size: 13px; }
