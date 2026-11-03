@@ -682,7 +682,7 @@ function siteForm(st, preName = '') {
       <div class="grid2"><label>현장 담당자 <input name="mgr" value="${esc(v.mgr || '')}" placeholder="예: 안전관리자 홍길동"></label>
         <label>연락처 <input name="tel" type="tel" value="${esc(v.tel || '')}" placeholder="010-0000-0000"></label></div>
       <label>메모 <textarea name="memo" rows="2" placeholder="예: 지도 주기, 공정 특이사항">${esc(v.memo || '')}</textarea></label>
-      ${st ? '' : '<label>근로자 <small>(선택 · 한 줄에 한 명, 또는 쉼표로 구분)</small><textarea name="w" rows="3"></textarea></label>'}
+      ${st ? '' : '<label>인원 <small>(선택 · 한 줄에 한 명씩 이름 전화번호)</small><textarea name="w" rows="3" placeholder="홍길동 010-1234-5678"></textarea></label>'}
       ${st ? '<p class="hint">현장명을 바꾸면 이 현장의 교육·TBM·장비측정 기록의 현장명도 함께 바뀝니다.</p>' : ''}
       <button class="btn primary big">${st ? '저장' : '등록'}</button></form>`, { onClose: () => resolve(null) });
     $('#sitef', m.el).onsubmit = async e => {
@@ -695,7 +695,7 @@ function siteForm(st, preName = '') {
             if (Registry.norm(s.site) === Registry.norm(oldName)) { s.site = saved.name; await DB.put('sessions', s); }
           }
         }
-        if (!st && data.w) await Registry.addPeople(saved.name, data.w.split(/[,，\n]/));
+        if (!st && data.w) await Registry.addPeople(saved.name, Registry.parsePeople(data.w));
         toast(st ? '현장 정보를 저장했습니다.' : `'${saved.name}' 현장을 등록했습니다.`);
         resolve(saved); m.el.remove();
       } catch (err) { toast(err.message, 3500); }
@@ -855,21 +855,56 @@ async function importView(code) {
 }
 
 // ---------- 현장·근로자 관리 ----------
+const telHit = (st, n, q) => { const d = String(q || '').replace(/\D/g, ''); return d.length >= 3 && ((st.tels || {})[n] || '').replace(/\D/g, '').includes(d); };
+// 인원 한 명 수정 창
+function personForm(siteName, person, done) {
+  Registry.tels(siteName).then(tels => {
+    const m = modal(`<h2>인원 정보 수정</h2><form class="form" id="pf">
+      <label>이름 <input name="n" required value="${esc(person)}"></label>
+      <label>전화번호 <input name="t" type="tel" inputmode="tel" value="${esc(tels[person] || '')}" placeholder="010-0000-0000"></label>
+      <button class="btn primary big">저장</button></form>`);
+    $('#pf', m.el).onsubmit = async e => {
+      e.preventDefault();
+      try { await Registry.savePerson(siteName, person, e.target.n.value, e.target.t.value); m.close(); toast('저장했습니다.'); done(); }
+      catch (err) { toast(err.message, 3500); }
+    };
+  });
+}
+// 여러 명 붙여넣기 (엑셀·카카오톡·문자에서 복사한 명단)
+function pastePeople(siteName, done) {
+  const m = modal(`<h2>여러 명 붙여넣기</h2>
+    <p class="hint">한 줄에 한 명씩 <b>이름 전화번호</b>를 넣으세요. 엑셀 두 칸(이름·번호)을 복사해 붙여넣어도 됩니다. 번호는 없어도 됩니다.</p>
+    <textarea id="pp-text" rows="8" placeholder="홍길동 010-1234-5678&#10;김철수 01098765432&#10;이영희"></textarea>
+    <div id="pp-prev" class="hint"></div>
+    <button class="btn primary big" id="pp-ok" disabled>추가</button>`, { wide: true });
+  const ta = $('#pp-text', m.el), prev = $('#pp-prev', m.el), ok = $('#pp-ok', m.el);
+  let list = [];
+  ta.oninput = () => {
+    list = Registry.parsePeople(ta.value);
+    prev.innerHTML = list.length ? `<b>${list.length}명</b>: ${list.slice(0, 30).map(p => esc(p.name) + (p.tel ? ` <small>(${esc(p.tel)})</small>` : '')).join(', ')}${list.length > 30 ? ' …' : ''}` : '';
+    ok.disabled = !list.length;
+  };
+  ok.onclick = async () => { await Registry.addPeople(siteName, list); m.close(); toast(`${list.length}명을 추가했습니다.`); done(); };
+  setTimeout(() => ta.focus(), 50);
+}
 async function sitesView() {
   view().innerHTML = `<div class="bar"><h1>현장·근로자</h1><button class="btn primary" id="addsite">＋ 현장 등록</button></div>
-    <p class="hint">관리 중인 현장을 등록해 두면 안전교육·TBM·장비측정에서 <b>현장 선택</b>으로 바로 고를 수 있습니다. 교육받은 근로자는 자동으로 등록됩니다.</p>
-    <input id="q" type="search" placeholder="현장명·시공사 또는 근로자 이름 검색 (초성 검색 가능)">
+    <p class="hint">관리 중인 현장과 현장별 인원(이름·전화번호)을 등록해 두면 안전교육·TBM·장비측정에서 바로 고를 수 있습니다. 교육받은 근로자는 이름이 자동으로 등록됩니다.</p>
+    <input id="q" type="search" placeholder="현장명·시공사, 이름 또는 전화번호 검색 (초성 검색 가능)">
     <div id="slist" class="site-list"></div>`;
   const draw = async () => {
     const q = $('#q').value;
-    const list = (await Registry.sites()).filter(st => Search.match(st.name, q) || Search.match(st.client || '', q) || Object.keys(st.people).some(n => Search.match(n, q)));
+    const list = (await Registry.sites()).filter(st => Search.match(st.name, q) || Search.match(st.client || '', q) || Object.keys(st.people).some(n => Search.match(n, q) || telHit(st, n, q)));
     $('#slist').innerHTML = list.length ? list.map(st => {
       const people = Object.entries(st.people).sort((a, b) => b[1] - a[1]).map(e => e[0]);
       return `<section class="site" data-site="${esc(st.name)}">
         <div class="bar"><div><b>${esc(st.name)}</b><span class="hint">${esc([st.client, st.addr].filter(Boolean).join(' · '))}</span><span class="hint">${esc([st.place && '장소 ' + st.place, st.mgr, st.tel].filter(Boolean).join(' · '))}${st.place || st.mgr || st.tel ? ' · ' : ''}근로자 ${people.length}명 · 최근 ${esc(Report.fmtDate(new Date(st.updated).toISOString(), false))}</span>${st.memo ? `<span class="hint">메모: ${esc(st.memo)}</span>` : ''}</div>
           <div class="row"><a class="btn primary sm" href="#/new~${encodeURIComponent(st.name)}">이 현장 새 교육</a><a class="btn sm" href="#/tbm/new~${encodeURIComponent(st.name)}">이 현장 TBM</a><a class="btn sm" href="#/meas/new~${encodeURIComponent(st.name)}">이 현장 장비측정</a><button class="btn ghost sm" data-editsite>수정</button><button class="btn ghost sm" data-delsite>삭제</button></div></div>
-        <div class="people">${people.map(n => `<span class="pchip ${q && Search.match(n, q) ? 'hit' : ''}">${esc(n)}<button data-delp="${esc(n)}" aria-label="${esc(n)} 삭제">✕</button></span>`).join('') || '<span class="hint">등록된 근로자가 없습니다.</span>'}</div>
-        <div class="row addp"><input placeholder="근로자 추가 (여러 명은 쉼표로 구분)"><button class="btn sm" data-addp>추가</button></div>
+        <details class="pbox" ${q && people.some(n => Search.match(n, q) || telHit(st, n, q)) || people.length <= 8 ? 'open' : ''}><summary>인원 명단 <b>${people.length}명</b>${people.length ? ` · 전화번호 ${people.filter(n => (st.tels || {})[n]).length}명` : ''}</summary>
+          ${people.length ? `<ul class="plist">${people.map(n => { const tel = (st.tels || {})[n]; return `<li class="${q && (Search.match(n, q) || telHit(st, n, q)) ? 'hit' : ''}"><b>${esc(n)}</b>${tel ? `<a href="tel:${esc(tel.replace(/-/g, ''))}">${esc(tel)}</a>` : '<span class="notel">번호 없음</span>'}<span class="pbtn"><button type="button" class="btn ghost sm" data-editp="${esc(n)}">수정</button><button type="button" class="btn ghost sm" data-delp="${esc(n)}" aria-label="${esc(n)} 삭제">✕</button></span></li>`; }).join('')}</ul>` : '<p class="hint">등록된 인원이 없습니다.</p>'}
+          <div class="addp"><input class="ap-n" placeholder="이름"><input class="ap-t" type="tel" inputmode="tel" placeholder="전화번호 (선택)"><button class="btn sm primary" data-addp>추가</button></div>
+          <div class="row"><button type="button" class="btn ghost sm" data-paste>여러 명 붙여넣기</button>${'contacts' in navigator && navigator.contacts.select ? '<button type="button" class="btn ghost sm" data-contacts>휴대폰 연락처에서 가져오기</button>' : ''}</div>
+        </details>
       </section>`;
     }).join('') : '<p class="hint">등록된 현장이 없습니다.</p>';
     $$('#slist .site').forEach(el => {
@@ -883,14 +918,30 @@ async function sitesView() {
         if (!confirm(`${b.dataset.delp} 님을 이 현장 명단에서 삭제할까요?`)) return;
         await Registry.removePerson(name, b.dataset.delp); draw();
       });
-      const inp = $('.addp input', el);
+      $$('[data-editp]', el).forEach(b => b.onclick = () => personForm(name, b.dataset.editp, draw));
+      const inN = $('.ap-n', el), inT = $('.ap-t', el);
       const add = async () => {
-        const names = inp.value.split(/[,，\n]/).map(x => x.trim()).filter(Boolean);
-        if (!names.length) return;
-        await Registry.addPeople(name, names); toast(`${names.length}명을 추가했습니다.`); draw();
+        const n = inN.value.trim();
+        if (!n) { toast('이름을 입력하세요.'); inN.focus(); return; }
+        const st = await Registry.site(name);
+        if (st.people[n] != null && !confirm(`${n} 님은 이미 명단에 있습니다. 전화번호를 바꿀까요?`)) return;
+        await Registry.addPeople(name, [{ name: n, tel: inT.value }]);
+        toast(`${n} 님을 추가했습니다.`); await draw();
+        const again = $(`.site[data-site="${CSS.escape(name)}"] .ap-n`); if (again) again.focus();
       };
       $('[data-addp]', el).onclick = add;
-      inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); add(); } };
+      inN.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); inT.focus(); } };
+      inT.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); add(); } };
+      $('[data-paste]', el).onclick = () => pastePeople(name, draw);
+      const cb = $('[data-contacts]', el);
+      if (cb) cb.onclick = async () => {
+        try {
+          const got = await navigator.contacts.select(['name', 'tel'], { multiple: true });
+          const list = got.map(c => ({ name: (c.name || [])[0] || '', tel: (c.tel || [])[0] || '' })).filter(x => x.name.trim());
+          if (!list.length) return;
+          await Registry.addPeople(name, list); toast(`${list.length}명을 연락처에서 가져왔습니다.`); draw();
+        } catch (e) { if (e.name !== 'AbortError') toast('연락처를 가져오지 못했습니다: ' + e.message, 4000); }
+      };
     });
   };
   $('#q').oninput = draw;

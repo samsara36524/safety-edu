@@ -23,20 +23,68 @@ const Registry = (() => {
     st.updated = Date.now();
     await save();
   }
+  // names: '이름' 또는 { name, tel } 목록. 전화번호가 있으면 함께 저장(없으면 기존 번호 유지)
   async function addPeople(siteName, names, when = Date.now()) {
     const r = await load(), st = siteRec(r, siteName);
     if (!st) return;
     for (const n of names) {
-      const v = String(n || '').trim();
-      if (v) st.people[v] = Math.max(st.people[v] || 0, when);
+      const v = String((n && n.name) || n || '').trim();
+      if (!v) continue;
+      st.people[v] = Math.max(st.people[v] || 0, when);
+      const tel = fmtTel(n && n.tel);
+      if (tel) (st.tels = st.tels || {})[v] = tel;
     }
     st.updated = Math.max(st.updated, when);
     await save();
   }
+  // 한 사람 수정 (이름을 바꾸면 옮겨 저장)
+  async function savePerson(siteName, oldName, name, tel) {
+    const r = await load(), st = siteRec(r, siteName);
+    const v = String(name || '').trim();
+    if (!st || !v) throw new Error('이름을 입력하세요.');
+    st.tels = st.tels || {};
+    if (oldName && oldName !== v) {
+      if (st.people[v] != null) throw new Error(`${v} 님이 이미 명단에 있습니다.`);
+      st.people[v] = st.people[oldName] || Date.now();
+      delete st.people[oldName]; delete st.tels[oldName];
+    } else if (st.people[v] == null) st.people[v] = Date.now();
+    const t = fmtTel(tel);
+    if (t) st.tels[v] = t; else delete st.tels[v];
+    await save();
+  }
   async function removePerson(siteName, name) {
     const r = await load(), st = r.sites[norm(siteName)];
-    if (st) { delete st.people[name]; await save(); }
+    if (st) { delete st.people[name]; if (st.tels) delete st.tels[name]; await save(); }
   }
+  // 전화번호 모양 맞추기: 01012345678 → 010-1234-5678
+  function fmtTel(s) {
+    const d = String(s || '').replace(/[^\d+]/g, '').replace(/^\+82/, '0');
+    if (!d) return '';
+    if (/^02\d{7,8}$/.test(d)) return d.replace(/^(02)(\d{3,4})(\d{4})$/, '$1-$2-$3');
+    if (/^0\d{9,10}$/.test(d)) return d.replace(/^(0\d{2})(\d{3,4})(\d{4})$/, '$1-$2-$3');
+    if (/^1\d{7}$/.test(d)) return d.replace(/^(\d{4})(\d{4})$/, '$1-$2');
+    return String(s).trim();
+  }
+  // 붙여넣은 글에서 이름·전화번호 뽑기: 한 줄(또는 쉼표)에 한 명, '홍길동 010-1234-5678' / '홍길동,01012345678' 등
+  function parsePeople(text) {
+    const out = [];
+    const rows = String(text || '').split(/\n|[;；]/);
+    for (const row of rows) {
+      // 한 줄에 전화번호가 여러 개면 쉼표로 여러 명, 아니면 쉼표는 이름·번호 구분으로 본다
+      const telRe = /(\+?82[-\s]?|0)1[016789][-.\s]?\d{3,4}[-.\s]?\d{4}|0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}/g;
+      const tels = row.match(telRe) || [];
+      const parts = tels.length > 1 || !tels.length ? row.split(/[,，]/) : [row];
+      for (const p of parts) {
+        const tel = (p.match(telRe) || [])[0] || '';
+        const name = p.replace(telRe, ' ').replace(/[,，:：\-–\t]/g, ' ').replace(/\(\s*\)/g, '').replace(/\s+/g, ' ').trim();
+        const last = out[out.length - 1];
+        if (name) out.push({ name, tel: fmtTel(tel), row });
+        else if (tel && last && last.row === row && !last.tel) last.tel = fmtTel(tel); // "이름, 번호" 순서로 쉼표가 섞인 경우
+      }
+    }
+    return out.map(({ name, tel }) => ({ name, tel }));
+  }
+  async function tels(siteName) { const st = await site(siteName); return (st && st.tels) || {}; }
   // 현장 등록·수정 (oldName이 있으면 수정, 이름이 바뀌면 옮겨 저장)
   const FIELDS = ['client', 'addr', 'place', 'mgr', 'tel', 'memo'];
   async function saveSite(oldName, data) {
@@ -105,7 +153,7 @@ const Registry = (() => {
     r.bf = true;
     await save();
   }
-  return { addSite, saveSite, addPeople, removePerson, removeSite, sites, site, people, backfill, norm, addSig, sigs, removeSig };
+  return { addSite, saveSite, addPeople, savePerson, parsePeople, fmtTel, tels, removePerson, removeSite, sites, site, people, backfill, norm, addSig, sigs, removeSig };
 })();
 
 const Search = (() => {
