@@ -650,7 +650,6 @@ function attachPastSigs(root, nameIn, pad) {
   $('.sigwrap', root).before(box);
   let used = null; // 불러온 과거 서명 코드 (새로 쓰기 시작하면 지움)
   const mark = () => $$('[data-g]', box).forEach(c => { c.checked = c.dataset.g === used; c.closest('.pitem').classList.toggle('on', c.checked); });
-  $('canvas', root).addEventListener('pointerdown', () => { if (used) { pad.clear(); used = null; mark(); } }, true);
   $('[data-clr]', root).addEventListener('click', () => { used = null; mark(); });
   $('canvas', root).addEventListener('sigwidth', () => { used = null; mark(); }); // 굵기를 바꾸면 새 서명으로 저장
   const showPast = async () => {

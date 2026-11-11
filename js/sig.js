@@ -20,6 +20,8 @@ const Sig = (() => {
   function pad(canvas) {
     let strokes = [], cur = null, last = null, raf = 0, sp = null;
     let bg = null, bgCode = ''; // 불러온 사진 서명
+    let locked = false; // 불러온 서명이 들어간 칸: [다시 쓰기] 전까지 덧그리지 않음
+    const setLock = v => { locked = v; canvas.classList.toggle('sig-locked', v); };
     strokes.w = savedW(); strokes.gh = GH;
     // 서명칸 비율에 맞춰 세로 격자 크기를 정한다 (빈 칸일 때만 바꿈)
     const setGh = () => {
@@ -106,8 +108,12 @@ const Sig = (() => {
       if (l && Math.hypot(last.gx - l[0], last.gy - l[1]) >= 0.6) cur.push([last.gx, last.gy, last.lv]);
     }
     canvas.addEventListener('pointerdown', e => {
-      e.preventDefault(); canvas.setPointerCapture(e.pointerId);
-      if (bg) { bg = null; bgCode = ''; } // 사진 서명 위에 쓰기 시작하면 새로 쓰는 서명으로
+      e.preventDefault();
+      if (locked) { // 이미 서명이 들어간 칸
+        if (typeof toast === 'function') toast('이미 서명이 들어 있습니다. 새로 쓰려면 [다시 쓰기]를 누르세요.');
+        return;
+      }
+      try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* 무시 */ }
       cur = []; last = null; sp = null; strokes.push(cur); add(e); later();
     });
     canvas.addEventListener('pointermove', e => {
@@ -123,13 +129,13 @@ const Sig = (() => {
     requestAnimationFrame(fit);
     window.addEventListener('resize', fit);
     return {
-      clear() { const w = strokes.w; strokes = []; strokes.w = w; bg = null; bgCode = ''; setGh(); redraw(); },
+      clear() { const w = strokes.w; strokes = []; strokes.w = w; bg = null; bgCode = ''; setLock(false); setGh(); redraw(); },
       load(code) {
         if (isImg(code)) {
           const w = strokes.w; strokes = []; strokes.w = w; setGh();
-          bgCode = code; bg = new Image(); bg.onload = redraw; bg.src = code; redraw(); return;
+          bgCode = code; bg = new Image(); bg.onload = redraw; bg.src = code; setLock(true); redraw(); return;
         }
-        bg = null; bgCode = '';
+        bg = null; bgCode = ''; setLock(true);
         const d = decode(code); strokes = d; strokes.w = d.w || WDEF; strokes.gh = d.gh || GH; markW(); redraw();
       },
       isEmpty() { return !bg && strokes.reduce((n, s) => n + s.length, 0) < 3; },
