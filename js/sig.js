@@ -4,7 +4,8 @@
 //  - 손가락: 천천히 쓰면 굵게, 빠르게 쓰면 가늘게 (붓처럼)
 //  - 획의 시작과 끝은 가늘게 모아 붓끝 느낌을 낸다
 const Sig = (() => {
-  const GW = 250, GH = 100; // 좌표 격자 (가로 250 x 세로 100)
+  const GW = 250, GH = 100; // 좌표 격자 (가로 250 x 세로 100). 세로 화면의 넓은 서명칸은 세로를 최대 160까지 늘린다(gh)
+  const GHMAX = 160;
   const WMIN = 1, WMAX = 15; // 굵기 단계
   // 전체 굵기 5단계(가늘게~굵게)의 기준 굵기(격자 단위). 붓펜처럼 변화 폭은 작게.
   const BASE = [0, 1.0, 1.4, 1.9, 2.5, 3.2];
@@ -15,7 +16,12 @@ const Sig = (() => {
 
   function pad(canvas) {
     let strokes = [], cur = null, last = null, raf = 0, sp = null;
-    strokes.w = savedW();
+    strokes.w = savedW(); strokes.gh = GH;
+    // 서명칸 비율에 맞춰 세로 격자 크기를 정한다 (빈 칸일 때만 바꿈)
+    const setGh = () => {
+      const r = canvas.getBoundingClientRect();
+      if (r.width > 0) strokes.gh = Math.max(GH, Math.min(GHMAX, Math.round((GW - 1) * r.height / r.width) + 1));
+    };
     // 굵기 선택 버튼 (서명 칸 바로 아래)
     const bar = document.createElement('div');
     bar.className = 'sigw';
@@ -37,6 +43,7 @@ const Sig = (() => {
       const dpr = window.devicePixelRatio || 1;
       canvas.width = Math.round(r.width * dpr);
       canvas.height = Math.round(r.height * dpr);
+      if (!strokes.length) setGh();
       redraw();
     }
     const redraw = () => draw(canvas, strokes);
@@ -45,7 +52,7 @@ const Sig = (() => {
       const r = canvas.getBoundingClientRect();
       return {
         gx: Math.max(0, Math.min(GW - 1, (e.clientX - r.left) / r.width * (GW - 1))),
-        gy: Math.max(0, Math.min(GH - 1, (e.clientY - r.top) / r.height * (GH - 1))),
+        gy: Math.max(0, Math.min(strokes.gh - 1, (e.clientY - r.top) / r.height * (strokes.gh - 1))),
         t: e.timeStamp
       };
     }
@@ -104,10 +111,10 @@ const Sig = (() => {
     requestAnimationFrame(fit);
     window.addEventListener('resize', fit);
     return {
-      clear() { const w = strokes.w; strokes = []; strokes.w = w; redraw(); },
-      load(code) { const d = decode(code); strokes = d; strokes.w = d.w || WDEF; markW(); redraw(); },
+      clear() { const w = strokes.w; strokes = []; strokes.w = w; setGh(); redraw(); },
+      load(code) { const d = decode(code); strokes = d; strokes.w = d.w || WDEF; strokes.gh = d.gh || GH; markW(); redraw(); },
       isEmpty() { return strokes.reduce((n, s) => n + s.length, 0) < 3; },
-      strokes() { const r = strokes.map(s => simplify(s, 0.35)); r.w = strokes.w; return r; }
+      strokes() { const r = strokes.map(s => simplify(s, 0.35)); r.w = strokes.w; r.gh = strokes.gh; return r; }
     };
   }
 
@@ -115,8 +122,10 @@ const Sig = (() => {
   function draw(canvas, strokes, color = '#111') {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    const sx = canvas.width / (GW - 1), sy = canvas.height / (GH - 1);
-    const u = (sx + sy) / 2; // 격자 1칸의 화면 크기
+    const gh = strokes.gh || GH;
+    const sc = Math.min(canvas.width / (GW - 1), canvas.height / (gh - 1)); // 비율 유지
+    const ox = (canvas.width - sc * (GW - 1)) / 2, oy = (canvas.height - sc * (gh - 1)) / 2;
+    const sx = sc, sy = sc, u = sc; // 격자 1칸의 화면 크기
     ctx.fillStyle = color; ctx.strokeStyle = color;
     for (const s of strokes) {
       if (!s.length) continue;
@@ -124,18 +133,18 @@ const Sig = (() => {
         ctx.lineCap = 'round'; ctx.lineJoin = 'round';
         ctx.lineWidth = Math.max(2, canvas.width / 110);
         ctx.beginPath();
-        s.forEach(([x, y], i) => i ? ctx.lineTo(x * sx, y * sy) : ctx.moveTo(x * sx, y * sy));
-        if (s.length === 1) ctx.lineTo(s[0][0] * sx + 0.5, s[0][1] * sy + 0.5);
+        s.forEach(([x, y], i) => i ? ctx.lineTo(ox + x * sx, oy + y * sy) : ctx.moveTo(ox + x * sx, oy + y * sy));
+        if (s.length === 1) ctx.lineTo(ox + s[0][0] * sx + 0.5, oy + s[0][1] * sy + 0.5);
         ctx.stroke();
         continue;
       }
-      brush(ctx, s, sx, sy, u, strokes.w);
+      brush(ctx, s, sx, sy, u, strokes.w, ox, oy);
     }
   }
   // 점 사이를 부드러운 곡선(캣멀-롬)으로 잇고, 굵기가 변하는 원을 촘촘히 찍어 붓 획을 만든다
-  function brush(ctx, s, sx, sy, u, w) {
+  function brush(ctx, s, sx, sy, u, w, ox = 0, oy = 0) {
     const n = s.length;
-    const P = s.map(([x, y]) => [x * sx, y * sy]);
+    const P = s.map(([x, y]) => [ox + x * sx, oy + y * sy]);
     const R = s.map(([, , lv], i) => {
       // 붓끝: 획의 처음과 끝을 가늘게
       const k = Math.min(i, n - 1 - i);
@@ -200,13 +209,15 @@ const Sig = (() => {
   // 획 → 바이트(가변 길이 정수 + 지그재그 차분) → base64url
   // 새 형식: [0, 3(버전), 전체 굵기, 획수, (점수, (dx, dy, 굵기)...)...]  ← 첫 값 0으로 예전 형식과 구분
   //  버전 3은 좌표를 0.5칸 단위로 더 세밀하게 저장한다. (버전 2: 1칸 단위, 버전 1: 전체 굵기 없음 → 보통)
+  //  버전 4는 세로 격자 크기(gh, 넓은 서명칸)를 전체 굵기 다음에 담는다.
   function encode(strokes) {
     const out = [];
     const vint = v => { while (v > 127) { out.push((v & 127) | 128); v >>>= 7; } out.push(v); };
     const zz = v => (v << 1) ^ (v >> 31);
     const brushy = strokes.some(s => s.some(p => p.length > 2));
     const k = brushy ? 2 : 1; // 버전 3은 좌표 2배
-    if (brushy) { vint(0); vint(3); vint(strokes.w || WDEF); }
+    const gh = Math.max(GH, Math.min(GHMAX, Math.round(strokes.gh || GH)));
+    if (brushy) { vint(0); vint(gh > GH ? 4 : 3); vint(strokes.w || WDEF); if (gh > GH) vint(gh); }
     vint(strokes.length);
     for (const s of strokes) {
       vint(s.length);
@@ -223,10 +234,11 @@ const Sig = (() => {
     const b = Codec.b64u.dec(str); let i = 0;
     const vint = () => { let v = 0, sh = 0, c; do { c = b[i++]; v |= (c & 127) << sh; sh += 7; } while (c & 128); return v >>> 0; };
     const unzz = v => (v >>> 1) ^ -(v & 1);
-    let n = vint(), brushy = false, w = WDEF, sc = 1;
-    if (n === 0 && i < b.length) { const ver = vint(); if (ver >= 2) w = vint(); if (ver >= 3) sc = 2; n = vint(); brushy = true; } // 새 형식
+    let n = vint(), brushy = false, w = WDEF, sc = 1, gh = GH;
+    if (n === 0 && i < b.length) { const ver = vint(); if (ver >= 2) w = vint(); if (ver >= 3) sc = 2; if (ver >= 4) gh = vint(); n = vint(); brushy = true; } // 새 형식
     const strokes = [];
     strokes.w = Math.max(1, Math.min(5, w));
+    strokes.gh = Math.max(GH, Math.min(GHMAX, gh));
     for (let k = 0; k < n; k++) {
       const m = vint(), s = []; let px = 0, py = 0;
       for (let j = 0; j < m; j++) {

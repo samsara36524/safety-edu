@@ -87,7 +87,7 @@ const Report = (() => {
         <tr><th>참석인원</th><td colspan="3">${session.workers.length}명</td></tr>
       </table>`);
       const sigRows = [];
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < Math.max(6, session.workers.length); i++) {
         const w = session.workers[i];
         sigRows.push(`<tr class="rp-sigrow"><td>${i + 1}</td><td>${w ? esc(w.name) : ''}</td>
           <td class="rp-sigcell">${w ? `<img src="${Sig.toImage(w.sig, 400, 160)}">` : ''}</td>
@@ -158,6 +158,8 @@ const Report = (() => {
         const c = await html2canvas(p, { scale: 2, backgroundColor: '#ffffff', logging: false, scrollX: -window.scrollX, scrollY: -window.scrollY, useCORS: true });
         images.push(c.toDataURL('image/jpeg', 0.88));
       }
+      // 교육일지·점검일지 등 첨부 쪽
+      images.push(...await logPageImages(session.logs, `안전교육 결과 · ${session.site || ''} · 첨부`));
       const { jsPDF } = window.jspdf;
       const pdf = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
       images.forEach((src, i) => { if (i) pdf.addPage(); pdf.addImage(src, 'JPEG', 0, 0, 210, 297); });

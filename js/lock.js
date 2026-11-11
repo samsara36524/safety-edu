@@ -12,8 +12,21 @@ const Lock = (() => {
   // 이 기기(지도요원)의 현재 비밀번호 해시
   async function current() { return (await DB.get('kv', 'pin').catch(() => null)) || DEFAULT; }
   async function setPin(pin) { await DB.put('kv', await hash(pin), 'pin'); remember(await hash(pin)); }
-  function isOpen(h) { try { return sessionStorage.getItem(KEY) === h; } catch (e) { return false; } }
+  // 다른 앱(카메라 등)에 다녀오는 사이 앱이 닫혀도 30분 안이면 다시 묻지 않는다
+  const KEEP = 'unlockKeep', KEEP_MS = 30 * 60 * 1000;
+  function isOpen(h) {
+    try {
+      if (sessionStorage.getItem(KEY) === h) return true;
+      const k = JSON.parse(localStorage.getItem(KEEP) || 'null');
+      if (k && k.h === h && k.until > Date.now()) { sessionStorage.setItem(KEY, h); return true; }
+    } catch (e) { /* 저장 불가 */ }
+    return false;
+  }
   function remember(h) { try { sessionStorage.setItem(KEY, h); } catch (e) { /* 저장 불가 */ } }
+  // 화면을 벗어날 때 호출: 열린 상태를 30분 동안 기억
+  function keep() {
+    try { const h = sessionStorage.getItem(KEY); if (h) localStorage.setItem(KEEP, JSON.stringify({ h, until: Date.now() + KEEP_MS })); } catch (e) { /* 저장 불가 */ }
+  }
   const valid = pin => /^\d{6}$/.test(pin);
 
   // 잠금 화면을 그리고, 맞으면 onOpen() 호출
@@ -53,5 +66,5 @@ const Lock = (() => {
     });
     root.querySelector('#lockf').onsubmit = e => { e.preventDefault(); check(); };
   }
-  return { DEFAULT, hash, current, setPin, isOpen, gate, valid };
+  return { DEFAULT, hash, current, setPin, isOpen, gate, valid, keep };
 })();

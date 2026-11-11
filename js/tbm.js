@@ -250,15 +250,17 @@ const TBM = (() => {
       body.innerHTML = `<h2 class="h">TBM 리더 확인</h2>
         <div class="leader" id="leader"></div>
         <h2 class="h">작업자 서명 <span id="cnt"></span></h2>
-        <p class="hint">작업자 ${MAX_WORKERS}명까지 서명을 받습니다. 작업자는 폰으로 QR을 찍어 위험요인·대책을 확인하고 서명합니다.${t.self ? ' 자가진단 8문항도 함께 답합니다.' : ''}</p>
+        <p class="hint">작업자 ${MAX_WORKERS}명까지 서명을 받습니다. 이 기기에서 바로 받거나, 작업자 폰으로 QR을 찍어 위험요인·대책을 확인하고 서명하게 합니다.${t.self ? ' 자가진단 8문항도 함께 답합니다.' : ''}</p>
         <div class="sig-actions">
           <button class="btn primary" id="a-qr">현장 QR 보여주기</button>
           <button class="btn" id="a-scan">결과 QR 스캔</button>
-          <button class="btn" id="a-dev">이 기기에서 서명</button>
           <button class="btn ghost" id="a-paste">결과 코드 붙여넣기</button>
         </div>
         <ol class="sig-list" id="sl"></ol>
-        <div id="known"></div>` + nav(2, nextOf(3));
+        <h2 class="h">이 기기에서 서명 받기</h2>
+        ${confirmOnceHTML([{ title: '금일 위험요인과 대책', items: t.haz.map((z, i) => `<b>${CIRC[i]} ${esc(z.h)}</b>${t.focus === i ? ' <em class="fx">★중점</em>' : ''}<br><small>대책: ${esc(z.m)}</small>`) }])}
+        <div id="known"></div>
+        <div id="slots"></div>` + nav(2, nextOf(3));
       const drawLeader = () => {
         const L = t.leader;
         $('#leader').innerHTML = `<div><b>${esc(L.name)}</b><span>${esc([L.org, L.pos].filter(Boolean).join(' · '))}</span></div>
@@ -291,11 +293,11 @@ const TBM = (() => {
         });
         const known = await Registry.people(t.site);
         const done = new Set(t.workers.map(w => w.name));
-        $('#known').innerHTML = known.length ? `<h2 class="h">이 현장 등록 근로자 <small>(누르면 바로 서명)</small></h2>
+        $('#known').innerHTML = known.length ? `<p class="hint">이 현장 등록 근로자 <small>(누르면 빈 서명칸에 이름이 들어갑니다)</small></p>
           <div class="people">${known.map(n => `<button class="pchip ${done.has(n) ? 'done' : ''}" data-n="${esc(n)}">${esc(n)}${done.has(n) ? ' ✔' : ''}</button>`).join('')}</div>` : '';
         $$('#known [data-n]').forEach(b => b.onclick = () => {
-          if (done.has(b.dataset.n)) { toast(`${b.dataset.n} 님은 이미 서명했습니다.`); return; }
-          devSign(b.dataset.n);
+          if (done.has(b.dataset.n) && !confirm(`${b.dataset.n} 님은 이미 서명했습니다. 한 번 더 받을까요?`)) return;
+          slotsApi.fill(b.dataset.n);
         });
       };
       const full = () => { if (t.workers.length >= MAX_WORKERS) { toast(`서명은 ${MAX_WORKERS}명까지 받을 수 있습니다.`); return true; } return false; };
@@ -324,30 +326,25 @@ const TBM = (() => {
           if (r.ok) { m.close(); reload(); }
         };
       };
-      const devSign = async (preName = '') => {
-        if (full()) return;
-        const known = await Registry.people(t.site);
-        const m = modal(`<h2>작업자 확인 및 서명</h2>${workerFormHTML(t.haz, t.focus, t.self)}`, { wide: true });
-        const pad = Sig.pad($('canvas', m.el));
-        const nameIn = $('[name=name]', m.el);
-        nameIn.value = preName;
-        attachNameSearch(nameIn, known, t.workers.map(w => w.name));
-        const getUsed = attachPastSigs(m.el, nameIn, pad);
-        bindWorkerForm(m.el, pad, async ({ name, sig }) => {
-          if (t.workers.some(w => w.name === name) && !confirm(`${name} 님은 이미 서명했습니다. 한 번 더 받을까요?`)) return;
-          const used = getUsed();
-          const reuse = !!used && (await Registry.sigs(name)).some(x => x.g === used);
-          if (reuse) sig = used;
-          const at = Math.floor(Date.now() / 1000);
-          const q = t.self ? readSelf(m.el) : '';
-          t.workers.push(Object.assign({ name, sig, at, via: reuse ? '현장(이전 서명)' : '현장(지도요원 기기)' }, q ? { q } : {}));
+      // 이 기기에서 여러 명 서명: 기본 4칸, [＋ 서명자 추가]로 최대 ${MAX_WORKERS}명
+      const slotsApi = signSlots($('#slots'), {
+        key: t.id, names: await Registry.people(t.site), signed: () => t.workers.map(w => w.name), room: () => MAX_WORKERS - t.workers.length,
+        onSave: async list => {
+          const at = Math.floor(Date.now() / 1000), saved = [];
+          for (const x of list) {
+            let q = '';
+            if (t.self) { q = await selfAsk(x.name); if (q === null) continue; } // 자가진단을 닫으면 그 사람은 저장하지 않음
+            t.workers.push(Object.assign({ name: x.name, sig: x.sig, at, via: x.reuse ? '현장(이전 서명)' : '현장(지도요원 기기)' }, q ? { q } : {}));
+            saved.push(x);
+          }
+          if (!saved.length) return [];
           await save(t);
-          await Registry.addPeople(t.site, [name]);
-          await Registry.addSig(name, sig, t.site, at * 1000);
-          m.close(); render(); toast(`${name} 님 서명을 저장했습니다.`);
-        });
-      };
-      $('#a-dev').onclick = () => devSign();
+          await Registry.addPeople(t.site, saved.map(x => x.name));
+          for (const x of saved) await Registry.addSig(x.name, x.sig, t.site, at * 1000);
+          render(); toast(`${saved.map(x => x.name).join(', ')} 님 서명을 저장했습니다.`, 3000);
+          return saved;
+        }
+      });
       render(); bindNav();
       return;
     }
@@ -384,9 +381,11 @@ const TBM = (() => {
           <label>근로자 의견 <small>(선택)</small><textarea name="opinion" rows="2">${esc(t.opinion)}</textarea></label>
           <label>작업 후 종료 미팅 (중점대책의 실효성) <small>(비우면 PDF에 수기용 빈칸)</small><textarea name="after" rows="2">${esc(t.after)}</textarea></label>
         </form>
+        <div id="logs"></div>
         <div class="row center"><button class="btn big primary" id="make" ${blocked ? 'disabled' : ''}>TBM 일지 PDF 만들기</button></div>
         <div id="out"></div>` + nav(prevOf(5), null);
       bindNav(async () => { const f = $('#f5'); t.opinion = f.opinion.value.trim(); t.after = f.after.value.trim(); await save(t); });
+      attachLogs($('#logs'), t, () => save(t));
       $('#make').onclick = async () => {
         const btn = $('#make'); btn.disabled = true; btn.textContent = '만드는 중…';
         try {
@@ -394,15 +393,15 @@ const TBM = (() => {
           const res = await build(t);
           t.done = true; await save(t);
           const name = fileName(t);
-          $('#out').innerHTML = `<h2 class="h">미리보기</h2><div class="tbm-prev"><img src="${res.image}" alt="TBM 일지"></div>
+          $('#out').innerHTML = `<h2 class="h">미리보기${res.images.length > 1 ? ` <small>(${res.images.length}쪽 · 첨부 포함)</small>` : ''}</h2><div class="tbm-prev">${res.images.map(src => `<img src="${src}" alt="TBM 일지">`).join('')}</div>
             <div class="save-actions">
-              <button class="btn primary" id="sv-pdf">PDF 저장</button>
+              <button class="btn primary" id="sv-pdf">PDF 저장${res.images.length > 1 ? ` (${res.images.length}쪽)` : ''}</button>
               <button class="btn" id="sv-share">PDF 공유 (카카오톡·메일 등)</button>
-              <button class="btn ghost" id="sv-jpg">이미지(JPG) 저장</button>
+              <button class="btn ghost" id="sv-jpg">이미지(JPG) 저장${res.images.length > 1 ? ` (${res.images.length}장)` : ''}</button>
             </div>
             <p class="hint">시공사는 PDF를 출력해 결재칸(관리감독자·안전보건관리책임자)에 수기로 결재합니다.</p>`;
           $('#sv-pdf').onclick = () => downloadBlob(res.pdf, name + '.pdf');
-          $('#sv-jpg').onclick = async () => downloadBlob(await dataUrlToBlob(res.image), name + '.jpg');
+          $('#sv-jpg').onclick = async () => { for (let i = 0; i < res.images.length; i++) downloadBlob(await dataUrlToBlob(res.images[i]), res.images.length > 1 ? `${name}_${i + 1}쪽.jpg` : name + '.jpg'); };
           $('#sv-share').onclick = async () => {
             const file = new File([res.pdf], name + '.pdf', { type: 'application/pdf' });
             if (navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -442,6 +441,16 @@ const TBM = (() => {
     </form>`;
   }
   const readSelf = root => SELF.map((_, i) => ($(`[name=sq${i}]:checked`, root) || {}).value || '-').join('');
+  // 이 기기에서 서명할 때 자가진단 8문항 (닫으면 null)
+  function selfAsk(name) {
+    return new Promise(resolve => {
+      let done = false;
+      const m = modal(`<h2>${esc(name)} 님 안전의식 자가진단</h2><form class="form wform">
+        <fieldset class="selfchk">${SELF.map(([g, q], i) => `<div class="sq"><span><small>${esc(g)}</small> ${i + 1}. ${esc(q)}</span><div class="seg sm">${Object.entries(ANS).map(([v, l]) => `<label><input type="radio" name="sq${i}" value="${v}" required><span>${l}</span></label>`).join('')}</div></div>`).join('')}</fieldset>
+        <button class="btn big primary" type="submit">확인</button></form>`, { wide: true, onClose: () => { if (!done) resolve(null); } });
+      $('form', m.el).onsubmit = e => { e.preventDefault(); done = true; const q = readSelf(m.el); m.close(); resolve(q); };
+    });
+  }
   function selfSummary(q) {
     const no = [...q].map((v, i) => v === 'n' ? i + 1 : 0).filter(Boolean);
     return no.length ? `'아니요' ${no.join('·')}번` : '이상 없음';
@@ -567,8 +576,9 @@ const TBM = (() => {
       const image = c.toDataURL('image/jpeg', 0.9);
       const { jsPDF } = window.jspdf;
       const pdf = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
-      pdf.addImage(image, 'JPEG', 0, 0, 210, 297);
-      return { pdf: pdf.output('blob'), image };
+      const images = [image, ...await logPageImages(t.logs, `TBM 일지 · ${t.site || ''} · 첨부`)]; // 교육일지·점검일지 등 첨부 쪽
+      images.forEach((src, i) => { if (i) pdf.addPage(); pdf.addImage(src, 'JPEG', 0, 0, 210, 297); });
+      return { pdf: pdf.output('blob'), image, images };
     } finally {
       root.remove();
     }

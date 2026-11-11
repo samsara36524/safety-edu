@@ -1,5 +1,6 @@
 // 안전지도 앱 본체 (사람인안전지도사사무소)
-const MAX_WORKERS = 6;
+const MAX_WORKERS = 6; // TBM 일지(A4 한 장) 작업자 칸
+const EDU_MAX = 40; // 안전교육 서명 인원 (결과지는 쪽을 넘겨 이어짐)
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -79,6 +80,7 @@ function pickFile(accept, capture) {
     const i = document.createElement('input');
     i.type = 'file'; i.accept = accept; if (capture) i.capture = capture;
     i.onchange = () => resolve(i.files[0] || null);
+    Keep.snapshot();
     i.click();
   });
 }
@@ -87,6 +89,7 @@ function pickFiles(accept, multiple, capture) {
     const i = document.createElement('input');
     i.type = 'file'; i.accept = accept; i.multiple = !!multiple; if (capture) i.capture = capture;
     i.onchange = () => resolve([...i.files]);
+    Keep.snapshot();
     i.click();
   });
 }
@@ -174,7 +177,7 @@ function sessionCard(s) {
   return `<a class="card" href="#/s/${s.id}/${s.step || 0}">
     <b>${esc(s.site || '(현장명 없음)')}</b>
     <span>${esc(Report.fmtDate(s.date))} · ${esc((s.topicData || []).map(t => t.title).join(', '))}</span>
-    <span class="badge ${s.done ? 'ok' : ''}">${s.done ? '완료' : STEPS[s.step || 0] + ' 단계'} · 서명 ${n}/${MAX_WORKERS}</span></a>`;
+    <span class="badge ${s.done ? 'ok' : ''}">${s.done ? '완료' : STEPS[s.step || 0] + ' 단계'} · 서명 ${n}명</span></a>`;
 }
 
 // ---------- 화면: 교육자료 목록/상세 ----------
@@ -447,19 +450,21 @@ async function sessionView(id, stepStr) {
   }
 
   if (step === 3) {
-    body.innerHTML = `<p class="hint">근로자 ${MAX_WORKERS}명까지 핵심수칙 확인과 서명을 받습니다. 현장에서는 QR, 멀리 있는 근로자에게는 링크를 보내세요.</p>
+    body.innerHTML = `<p class="hint">근로자 핵심수칙 확인과 서명을 받습니다(최대 ${EDU_MAX}명). 이 기기에서 바로 받거나, 근로자 폰으로 QR·링크를 보내세요.</p>
       <div class="sig-actions">
         <button class="btn primary" id="a-qr">현장 QR 보여주기</button>
         <button class="btn" id="a-scan">결과 QR 스캔</button>
-        <button class="btn" id="a-dev">이 기기에서 서명</button>
         <button class="btn" id="a-remote">원격 링크 보내기</button>
         <button class="btn ghost" id="a-paste">결과 코드 붙여넣기</button>
       </div>
       <h2 class="h">서명 현황 <span id="cnt"></span></h2>
       <ol class="sig-list" id="sl"></ol>
-      <div id="known"></div>` + nav(2, 4);
+      <h2 class="h">이 기기에서 서명 받기</h2>
+      ${confirmOnceHTML(s.topicData.map(t => ({ title: `${t.title} — 근로자는 이것만은 지켜야 합니다`, items: (t.worker || []).map(esc) })))}
+      <div id="known"></div>
+      <div id="slots"></div>` + nav(2, 4);
     let render = () => {
-      $('#cnt').textContent = `${s.workers.length} / ${MAX_WORKERS}`;
+      $('#cnt').textContent = `${s.workers.length}명`;
       $('#sl').innerHTML = s.workers.length ? s.workers.map((w, i) => `<li><img src="${Sig.toImage(w.sig, 250, 100)}"><div><b>${esc(w.name)}</b><span>${esc(w.via)} · ${esc(Report.fmtDate(new Date(w.at * 1000).toISOString()))}</span></div><button class="btn ghost sm" data-del="${i}">삭제</button></li>`).join('')
         : '<li class="empty">아직 받은 서명이 없습니다.</li>';
       $$('[data-del]', body).forEach(b => b.onclick = async () => {
@@ -467,7 +472,7 @@ async function sessionView(id, stepStr) {
         s.workers.splice(+b.dataset.del, 1); await saveSession(s); render();
       });
     };
-    const full = () => { if (s.workers.length >= MAX_WORKERS) { toast(`서명은 ${MAX_WORKERS}명까지 받을 수 있습니다.`); return true; } return false; };
+    const full = () => { if (s.workers.length >= EDU_MAX) { toast(`서명은 ${EDU_MAX}명까지 받을 수 있습니다.`); return true; } return false; };
     $('#a-qr').onclick = async () => {
       if (full()) return;
       const url = await inviteLink(s, 'q');
@@ -497,38 +502,28 @@ async function sessionView(id, stepStr) {
         if (r.ok) { m.close(); Object.assign(s, await DB.get('sessions', s.id)); render(); }
       };
     };
-    const devSign = async (preName = '') => {
-      if (full()) return;
-      const known = await Registry.people(s.site);
-      const m = modal(`<h2>근로자 확인 및 서명</h2>${workerConfirmHTML(s.topicData)}`, { wide: true });
-      const pad = Sig.pad($('canvas', m.el));
-      const nameIn = $('[name=name]', m.el);
-      nameIn.value = preName;
-      attachNameSearch(nameIn, known, s.workers.map(w => w.name));
-      const getUsed = attachPastSigs(m.el, nameIn, pad);
-      bindWorkerForm(m.el, pad, async ({ name, sig }) => {
-        if (s.workers.some(w => w.name === name) && !confirm(`${name} 님은 이미 서명했습니다. 한 번 더 받을까요?`)) return;
-        const used = getUsed();
-        const reuse = !!used && (await Registry.sigs(name)).some(x => x.g === used);
-        if (reuse) sig = used;
+    // 이 기기에서 여러 명 서명: 기본 4칸, [＋ 서명자 추가]로 늘림
+    const known = await Registry.people(s.site);
+    const slots = signSlots($('#slots'), {
+      key: s.id, names: known, signed: () => s.workers.map(w => w.name), room: () => EDU_MAX - s.workers.length,
+      onSave: async list => {
         const at = Math.floor(Date.now() / 1000);
-        s.workers.push({ name, sig, at, via: reuse ? '현장(이전 서명)' : '현장(지도요원 기기)' });
+        for (const x of list) s.workers.push({ name: x.name, sig: x.sig, at, via: x.reuse ? '현장(이전 서명)' : '현장(지도요원 기기)' });
         await saveSession(s);
-        await Registry.addPeople(s.site, [name]);
-        await Registry.addSig(name, sig, s.site, at * 1000);
-        m.close(); render(); toast(`${name} 님 서명을 저장했습니다.`);
-      });
-    };
-    $('#a-dev').onclick = () => devSign();
-    // 이 현장에 등록된 근로자: 누르면 이름이 입력된 서명 창이 열린다
-    const renderKnown = async () => {
-      const known = await Registry.people(s.site);
+        await Registry.addPeople(s.site, list.map(x => x.name));
+        for (const x of list) await Registry.addSig(x.name, x.sig, s.site, at * 1000);
+        render(); toast(`${list.map(x => x.name).join(', ')} 님 서명을 저장했습니다.`, 3000);
+        return list;
+      }
+    });
+    // 이 현장에 등록된 근로자: 누르면 빈 서명칸에 이름이 들어간다
+    const renderKnown = () => {
       const done = new Set(s.workers.map(w => w.name));
-      $('#known').innerHTML = known.length ? `<h2 class="h">이 현장 등록 근로자 <small>(누르면 바로 서명)</small></h2>
+      $('#known').innerHTML = known.length ? `<p class="hint">이 현장 등록 근로자 <small>(누르면 빈 서명칸에 이름이 들어갑니다)</small></p>
         <div class="people">${known.map(n => `<button class="pchip ${done.has(n) ? 'done' : ''}" data-n="${esc(n)}">${esc(n)}${done.has(n) ? ' ✔' : ''}</button>`).join('')}</div>` : '';
       $$('#known [data-n]').forEach(b => b.onclick = () => {
-        if (done.has(b.dataset.n)) { toast(`${b.dataset.n} 님은 이미 서명했습니다.`); return; }
-        devSign(b.dataset.n);
+        if (done.has(b.dataset.n) && !confirm(`${b.dataset.n} 님은 이미 서명했습니다. 한 번 더 받을까요?`)) return;
+        slots.fill(b.dataset.n);
       });
     };
     const render0 = render;
@@ -563,12 +558,14 @@ async function sessionView(id, stepStr) {
     const dir = canDir ? await DB.get('kv', 'dir').catch(() => null) : null;
     body.innerHTML = `<div class="summary">
         <div><b>${esc(s.site)}</b><span>${esc(Report.fmtDate(s.date))} · ${esc(INSPECTOR)}</span></div>
-        <div class="stats"><span>작업 <b>${s.topicData.length}</b></span><span>판정 <b>${judged}/${total}</b></span><span>미흡 <b>${bad}</b></span><span>서명 <b>${s.workers.length}/${MAX_WORKERS}</b></span><span>사진 <b>${s.photo ? 1 : 0}</b></span></div>
+        <div class="stats"><span>작업 <b>${s.topicData.length}</b></span><span>판정 <b>${judged}/${total}</b></span><span>미흡 <b>${bad}</b></span><span>서명 <b>${s.workers.length}명</b></span><span>사진 <b>${s.photo ? 1 : 0}</b></span><span>일지 첨부 <b id="lgcnt">${(s.logs || []).length}쪽</b></span></div>
         ${warn.length ? `<ul class="warn">${warn.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
       </div>
+      <div id="logs"></div>
       <div class="row center"><button class="btn big primary" id="make" ${s.photo ? '' : 'disabled'}>결과 만들기</button></div>
       <div id="out"></div>` + `<div class="row sticky-actions"><button class="btn ghost" data-go="4">← 이전</button></div>`;
     bindNav();
+    attachLogs($('#logs'), s, async () => { await saveSession(s); const c = $('#lgcnt'); if (c) c.textContent = `${s.logs.length}쪽`; });
     $('#make').onclick = async () => {
       const btn = $('#make'); btn.disabled = true; btn.textContent = '만드는 중…';
       try {
@@ -652,7 +649,7 @@ function attachPastSigs(root, nameIn, pad) {
   box.className = 'pastsig';
   $('.sigwrap', root).before(box);
   let used = null; // 불러온 과거 서명 코드 (새로 쓰기 시작하면 지움)
-  const mark = () => $$('[data-g]', box).forEach(b => b.classList.toggle('on', b.dataset.g === used));
+  const mark = () => $$('[data-g]', box).forEach(c => { c.checked = c.dataset.g === used; c.closest('.pitem').classList.toggle('on', c.checked); });
   $('canvas', root).addEventListener('pointerdown', () => { if (used) { pad.clear(); used = null; mark(); } }, true);
   $('[data-clr]', root).addEventListener('click', () => { used = null; mark(); });
   $('canvas', root).addEventListener('sigwidth', () => { used = null; mark(); }); // 굵기를 바꾸면 새 서명으로 저장
@@ -660,9 +657,12 @@ function attachPastSigs(root, nameIn, pad) {
     const name = nameIn.value.trim();
     const list = name ? await Registry.sigs(name) : [];
     if (used && !list.some(x => x.g === used)) { pad.clear(); used = null; }
-    box.innerHTML = list.length ? `<span>${esc(name)} 님의 이전 서명 <small>(눌러서 불러오기)</small></span>
-      <div class="pastlist">${list.map(x => `<div class="pitem"><button type="button" data-g="${x.g}"><img src="${Sig.toImage(x.g, 250, 100)}" alt="이전 서명"><small>${esc(x.site || '')} · ${esc(Report.fmtDate(new Date(x.at).toISOString(), false))}</small></button><button type="button" class="pdel" data-rm="${x.g}" title="이 서명 삭제">✕</button></div>`).join('')}</div>` : '';
-    $$('[data-g]', box).forEach(b => b.onclick = () => { pad.load(b.dataset.g); used = b.dataset.g; mark(); });
+    box.innerHTML = list.length ? `<span>${esc(name)} 님의 이전 서명 <small>(체크하면 서명칸에 불러옵니다)</small></span>
+      <div class="pastlist">${list.map(x => `<div class="pitem"><label class="pchk"><input type="checkbox" data-g="${x.g}"><img src="${Sig.toImage(x.g, 250, 100)}" alt="이전 서명"><small>${esc(x.site || '')} · ${esc(Report.fmtDate(new Date(x.at).toISOString(), false))}</small></label><button type="button" class="pdel" data-rm="${x.g}" title="이 서명 삭제">✕</button></div>`).join('')}</div>` : '';
+    $$('[data-g]', box).forEach(c => c.onchange = () => {
+      if (c.checked) { pad.load(c.dataset.g); used = c.dataset.g; } else { pad.clear(); used = null; }
+      mark();
+    });
     $$('[data-rm]', box).forEach(b => b.onclick = async () => {
       if (!confirm('이 이전 서명을 삭제할까요?')) return;
       await Registry.removeSig(name, b.dataset.rm);
@@ -834,12 +834,13 @@ async function importCode(text, expectId) {
   const s = await DB.get('sessions', r.s);
   if (!s) return { ok: false, notFound: true, msg: '이 기기에서 해당 교육을 찾을 수 없습니다.' };
   if (s.workers.some(w => w.name === r.n && w.at === r.a)) return { ok: false, msg: `${r.n} 님 서명은 이미 받았습니다.`, s };
-  if (s.workers.length >= MAX_WORKERS) return { ok: false, msg: `서명은 ${MAX_WORKERS}명까지입니다.`, s };
+  const maxW = s.kind === 'tbm' ? MAX_WORKERS : EDU_MAX;
+  if (s.workers.length >= maxW) return { ok: false, msg: `서명은 ${maxW}명까지입니다.`, s };
   s.workers.push(Object.assign({ name: r.n, sig: r.g, at: r.a, via: r.m === 'r' ? '원격(링크)' : '현장(QR)' }, r.q ? { q: r.q } : {}));
   await Registry.addSig(r.n, r.g, s.site, r.a * 1000);
   await saveSession(s);
   await Registry.addPeople(s.site, [r.n]);
-  return { ok: true, msg: `${r.n} 님 서명을 추가했습니다. (${s.workers.length}/${MAX_WORKERS})`, s };
+  return { ok: true, msg: `${r.n} 님 서명을 추가했습니다. (${s.workers.length}명)`, s };
 }
 async function importView(code) {
   const r = await importCode(code);
@@ -1089,6 +1090,7 @@ async function route() {
     if (m) {
       try { await fn(...m.slice(1)); } catch (e) { console.error(e); view().innerHTML = `<p class="err">오류: ${esc(e.message)}</p>`; }
       window.scrollTo(0, 0);
+      Keep.restore();
       return;
     }
   }
@@ -1099,7 +1101,8 @@ async function route() {
   try { await loadTopics(); } catch (e) { view().innerHTML = '<p class="err">교육자료를 불러오지 못했습니다. 인터넷 연결을 확인하세요.</p>'; return; }
   await Registry.backfill().catch(() => {});
   window.addEventListener('hashchange', route);
-  route();
+  const back = Keep.resumeHash(); // 다른 앱에 다녀오는 사이 앱이 닫혔으면 보던 화면으로
+  if (back) location.replace(back); else route();
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 })();
