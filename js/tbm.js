@@ -285,7 +285,7 @@ const TBM = (() => {
       drawLeader();
       const render = async () => {
         $('#cnt').textContent = `${t.workers.length} / ${MAX_WORKERS}`;
-        $('#sl').innerHTML = t.workers.length ? t.workers.map((w, i) => `<li><img src="${Sig.toImage(w.sig, 250, 100)}"><div><b>${esc(w.name)}</b><span>${esc(w.via)} · ${esc(Report.fmtDate(new Date(w.at * 1000).toISOString()))}${w.q ? ' · 자가진단 ' + esc(selfSummary(w.q)) : ''}</span></div><button class="btn ghost sm" data-del="${i}">삭제</button></li>`).join('')
+        $('#sl').innerHTML = t.workers.length ? t.workers.map((w, i) => `<li><img src="${Sig.toImage(w.sig, 250, 100)}"><div><b>${nameCell(w)}</b><span>${esc(w.via)} · ${esc(Report.fmtDate(new Date(w.at * 1000).toISOString()))}${w.q ? ' · 자가진단 ' + esc(selfSummary(w.q)) : ''}</span></div><button class="btn ghost sm" data-del="${i}">삭제</button></li>`).join('')
           : '<li class="empty">아직 받은 서명이 없습니다.</li>';
         $$('[data-del]', body).forEach(b => b.onclick = async () => {
           if (!confirm('이 서명을 삭제할까요?')) return;
@@ -339,9 +339,9 @@ const TBM = (() => {
           }
           if (!saved.length) return [];
           await save(t);
-          await Registry.addPeople(t.site, saved.map(x => x.name));
-          for (const x of saved) await Registry.addSig(x.name, x.sig, t.site, at * 1000);
-          render(); toast(`${saved.map(x => x.name).join(', ')} 님 서명을 저장했습니다.`, 3000);
+          await Registry.addPeople(t.site, saved.map(x => x.name).filter(Boolean));
+          for (const x of saved) if (x.name) await Registry.addSig(x.name, x.sig, t.site, at * 1000);
+          render(); toast(`${saved.length}명 서명을 저장했습니다.`, 3000);
           return saved;
         }
       });
@@ -501,8 +501,8 @@ const TBM = (() => {
     const L = t.leader;
     const chk = on => on ? '■' : '□';
     const slots = Array.from({ length: MAX_WORKERS }, (_, i) => t.workers[i]);
-    const sigCell = w => w ? `<td class="tb-nm">${esc(w.name)}</td><td class="tb-sg"><img src="${Sig.toImage(w.sig, 400, 160)}"></td>` : '<td class="tb-nm"></td><td class="tb-sg"></td>';
-    const selfNotes = t.self ? t.workers.filter(w => w.q).map(w => `${esc(w.name)}: ${esc(selfSummary(w.q))}`) : [];
+    const sigCell = w => w ? `<td class="tb-nm">${nameCell(w)}</td><td class="tb-sg"><img src="${Sig.toImage(w.sig, 400, 160)}"></td>` : '<td class="tb-nm"></td><td class="tb-sg"></td>';
+    const selfNotes = t.self ? t.workers.filter(w => w.q).map((w, i) => `${esc(w.name || `작업자 ${t.workers.indexOf(w) + 1}`)}: ${esc(selfSummary(w.q))}`) : [];
     return `<div class="tb-page">
       <div class="tb-head">
         <div class="tb-title"><img class="tb-logo" src="img/brand-logo.png" alt="사람인 안전지도사 사무소"><h1>작업 전 안전점검회의(TBM) 일지</h1></div>

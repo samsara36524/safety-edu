@@ -15,11 +15,41 @@ const Sig = (() => {
   const INK = '#111'; // 서명 잉크: 검정
   // 종이 서명을 촬영해 만든 서명은 'data:image/png...' 그림 그대로를 서명 코드로 쓴다 (500x200, 배경 투명)
   const isImg = code => typeof code === 'string' && code.startsWith('data:image');
+  // 사진 서명 굵기 바꾸기: delta>0 굵게(잉크 넓히기), delta<0 가늘게. 그림(img/canvas) → PNG
+  function inkWeight(src, delta) {
+    const w = src.naturalWidth || src.width, h = src.naturalHeight || src.height;
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const x = c.getContext('2d'); x.drawImage(src, 0, 0);
+    if (delta) {
+      const d = x.getImageData(0, 0, w, h), px = d.data;
+      let cur = new Uint8ClampedArray(w * h);
+      for (let i = 0; i < w * h; i++) cur[i] = px[i * 4 + 3];
+      for (let s = 0; s < Math.abs(delta); s++) {
+        const nx = new Uint8ClampedArray(w * h);
+        for (let y = 0; y < h; y++) for (let xx = 0; xx < w; xx++) {
+          let v = cur[y * w + xx];
+          for (let dy = -1; dy <= 1; dy++) {
+            const yy = y + dy; if (yy < 0 || yy >= h) continue;
+            for (let dx = -1; dx <= 1; dx++) {
+              const x2 = xx + dx; if (x2 < 0 || x2 >= w) continue;
+              const u = cur[yy * w + x2];
+              if (delta > 0 ? u > v : u < v) v = u;
+            }
+          }
+          nx[y * w + xx] = v;
+        }
+        cur = nx;
+      }
+      for (let i = 0; i < w * h; i++) { px[i * 4] = px[i * 4 + 1] = px[i * 4 + 2] = 17; px[i * 4 + 3] = cur[i]; }
+      x.putImageData(d, 0, 0);
+    }
+    return c.toDataURL('image/png');
+  }
   const savedW = () => { try { const v = +localStorage.getItem(KEY); return v >= 1 && v <= 5 ? v : WDEF; } catch (e) { return WDEF; } };
 
   function pad(canvas) {
     let strokes = [], cur = null, last = null, raf = 0, sp = null;
-    let bg = null, bgCode = ''; // 불러온 사진 서명
+    let bg = null, bgCode = '', bgBase = null, bgLevel = 3; // 불러온 사진 서명 (bgBase: 굵기 바꾸기 전 원본, bgLevel: 그 원본의 굵기 단계)
     let locked = false; // 불러온 서명이 들어간 칸: [다시 쓰기] 전까지 덧그리지 않음
     const setLock = v => { locked = v; canvas.classList.toggle('sig-locked', v); };
     strokes.w = savedW(); strokes.gh = GH;
@@ -40,8 +70,13 @@ const Sig = (() => {
     bar.querySelectorAll('[data-w]').forEach(b => b.onclick = () => {
       strokes.w = +b.dataset.w;
       try { localStorage.setItem(KEY, strokes.w); } catch (e) { /* 저장 불가 */ }
-      markW(); redraw();
-      canvas.dispatchEvent(new Event('sigwidth'));
+      markW();
+      if (bg && bgBase && bgBase.complete && bgBase.naturalWidth) { // 사진 서명도 굵기 반영
+        bgCode = inkWeight(bgBase, strokes.w - bgLevel);
+        bg = new Image(); bg.onload = redraw; bg.src = bgCode;
+      }
+      redraw();
+      canvas.dispatchEvent(new Event('sigwidth', { bubbles: true }));
     });
     markW();
     function fit() {
@@ -129,13 +164,15 @@ const Sig = (() => {
     requestAnimationFrame(fit);
     window.addEventListener('resize', fit);
     return {
-      clear() { const w = strokes.w; strokes = []; strokes.w = w; bg = null; bgCode = ''; setLock(false); setGh(); redraw(); },
-      load(code) {
+      clear() { const w = strokes.w; strokes = []; strokes.w = w; bg = null; bgCode = ''; bgBase = null; setLock(false); setGh(); redraw(); },
+      // level: 사진 서명의 굵기 단계 (촬영 때 고른 값, 이전 서명은 3=그대로)
+      load(code, level = 3) {
         if (isImg(code)) {
-          const w = strokes.w; strokes = []; strokes.w = w; setGh();
+          strokes = []; strokes.w = level; bgLevel = level; markW(); setGh();
+          bgBase = new Image(); bgBase.src = code;
           bgCode = code; bg = new Image(); bg.onload = redraw; bg.src = code; setLock(true); redraw(); return;
         }
-        bg = null; bgCode = ''; setLock(true);
+        bg = null; bgCode = ''; bgBase = null; setLock(true);
         const d = decode(code); strokes = d; strokes.w = d.w || WDEF; strokes.gh = d.gh || GH; markW(); redraw();
       },
       isEmpty() { return !bg && strokes.reduce((n, s) => n + s.length, 0) < 3; },
@@ -291,5 +328,5 @@ const Sig = (() => {
     return c.toDataURL('image/png');
   }
 
-  return { pad, encode, decode, draw, toImage, isImg };
+  return { pad, encode, decode, draw, toImage, isImg, inkWeight };
 })();

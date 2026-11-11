@@ -8,6 +8,8 @@
 //      onSave(list)→저장한 항목 배열을 돌려줌, initial(기본 칸 수) }
 function signSlots(box, o) {
   const DK = 'slots:' + o.key, INIT = o.initial || 4, MAXSLOT = 30;
+  const MK = 'nameMode'; // 이름 입력 방식: t 직접 입력, p 촬영 입력 (마지막 선택 기억)
+  const lastMode = () => { try { return localStorage.getItem(MK) === 'p' ? 'p' : 't'; } catch (e) { return 't'; } };
   let drafts = [];
   try { drafts = JSON.parse(localStorage.getItem(DK) || '[]'); } catch (e) { drafts = []; }
   box.innerHTML = `<div class="slots"></div>
@@ -15,33 +17,63 @@ function signSlots(box, o) {
   const grid = $('.slots', box), slots = [];
   const persist = () => {
     const d = slots.map(x => x.draft());
-    try { if (d.some(v => v.name || v.sig)) localStorage.setItem(DK, JSON.stringify(d)); else localStorage.removeItem(DK); } catch (e) { /* 저장 불가 */ }
+    try { if (d.some(v => v.name || v.nameImg || v.sig)) localStorage.setItem(DK, JSON.stringify(d)); else localStorage.removeItem(DK); } catch (e) { /* 저장 불가 */ }
   };
   const later = () => setTimeout(persist, 40);
   const renumber = () => slots.forEach((x, i) => { $('.slot-no', x.el).textContent = i + 1; });
   function add(d = {}) {
-    const el = document.createElement('section');
+    const el = document.createElement('section'), rid = uid(6);
     el.className = 'slot';
-    el.innerHTML = `<div class="slot-h"><b class="slot-no"></b><input name="name" autocomplete="off" placeholder="성명"><button type="button" class="slot-x" title="이 칸 비우기">✕</button></div>
+    el.innerHTML = `<div class="slot-h"><b class="slot-no"></b>
+        <div class="nm-box">
+          <div class="seg sm nm-mode"><label><input type="radio" name="nm${rid}" value="t"><span>이름 직접 입력</span></label><label><input type="radio" name="nm${rid}" value="p"><span>이름 촬영 입력</span></label></div>
+          <div class="nm-photo"><img class="nm-img" alt="촬영한 이름"><button type="button" class="btn sm" data-nshot>📷 이름 촬영</button></div>
+          <input name="name" autocomplete="off" placeholder="성명">
+        </div>
+        <button type="button" class="slot-x" title="이 칸 비우기">✕</button></div>
       <div class="sigwrap"><canvas class="sigpad"></canvas><button type="button" class="btn ghost sm" data-clr>다시 쓰기</button></div>`;
     grid.appendChild(el);
     const nameIn = $('[name=name]', el), pad = Sig.pad($('canvas', el));
     attachNameSearch(nameIn, o.names || [], o.signed());
     const getUsed = attachPastSigs(el, nameIn, pad);
+    const nmImg = $('.nm-img', el), nmPhoto = $('.nm-photo', el), nmBtn = $('[data-nshot]', el);
     const x = {
-      el, nameIn, pad, getUsed,
+      el, nameIn, pad, getUsed, mode: d.mode || lastMode(), nameImg: d.nameImg || '',
       sig: () => getUsed() || pad.code(),
-      draft: () => ({ name: nameIn.value.trim(), sig: x.sig() }),
-      reset() { nameIn.value = ''; nameIn.dispatchEvent(new Event('input')); pad.clear(); }
+      name: () => nameIn.value.trim(),
+      hasName: () => !!nameIn.value.trim(),
+      draft: () => ({ mode: x.mode, name: nameIn.value.trim(), nameImg: x.nameImg, sig: x.sig() }),
+      reset() { nameIn.value = ''; nameIn.dispatchEvent(new Event('input')); x.nameImg = ''; drawName(); pad.clear(); }
+    };
+    // 이름 칸: 직접 입력이면 입력칸, 촬영 입력이면 촬영한 이름 그림
+    const drawName = () => {
+      $$('.nm-mode input', el).forEach(r => { r.checked = r.value === x.mode; });
+      nameIn.placeholder = x.mode === 'p' ? '위 사진의 이름을 보고 입력' : '이름 입력 또는 검색 (초성 검색 가능)';
+      nmPhoto.classList.toggle('hide', x.mode !== 'p');
+      nmImg.classList.toggle('hide', !x.nameImg);
+      if (x.nameImg) nmImg.src = x.nameImg;
+      nmBtn.textContent = x.nameImg ? '📷 다시 촬영' : '📷 이름 촬영';
+    };
+    $$('.nm-mode input', el).forEach(r => r.onchange = () => {
+      x.mode = r.value; try { localStorage.setItem(MK, x.mode); } catch (e) { /* 저장 불가 */ }
+      drawName(); later();
+    });
+    nmBtn.onclick = async () => {
+      const r = await paperCrop({ kind: 'name' });
+      if (!r) return;
+      x.nameImg = r.code; drawName(); later();
+      setTimeout(() => nameIn.focus(), 100); // 사진을 보고 바로 입력
     };
     slots.push(x);
     if (d.name) { nameIn.value = d.name; nameIn.dispatchEvent(new Event('change')); }
     if (d.sig) setTimeout(() => pad.load(d.sig), 150);
+    drawName();
     nameIn.addEventListener('input', later);
     $('canvas', el).addEventListener('pointerup', later);
     $('[data-clr]', el).addEventListener('click', () => { pad.clear(); later(); });
     el.addEventListener('change', later); // 이전 서명 체크 등
     el.addEventListener('sigpaper', later); // 종이 서명 촬영
+    el.addEventListener('sigwidth', later); // 굵기 변경
     $('.slot-x', el).onclick = () => {
       if (slots.length > INIT) { el.remove(); slots.splice(slots.indexOf(x), 1); renumber(); } else x.reset();
       later();
@@ -53,16 +85,16 @@ function signSlots(box, o) {
   for (let i = 0; i < n; i++) add(drafts[i] || {});
   $('[data-sadd]', box).onclick = () => {
     if (slots.length >= MAXSLOT) { toast(`서명칸은 ${MAXSLOT}개까지 열 수 있습니다.`); return; }
-    const x = add(); x.el.scrollIntoView({ behavior: 'smooth', block: 'center' }); x.nameIn.focus();
+    const x = add(); x.el.scrollIntoView({ behavior: 'smooth', block: 'center' }); if (x.mode === 't') x.nameIn.focus();
   };
   $('[data-ssave]', box).onclick = async () => {
-    const filled = slots.filter(x => x.nameIn.value.trim() || x.sig());
+    const filled = slots.filter(x => x.hasName() || x.sig());
     if (!filled.length) { toast('서명칸에 이름과 서명을 넣어 주세요.'); return; }
     for (const x of filled) {
-      if (!x.nameIn.value.trim()) { toast('이름이 빠진 서명칸이 있습니다.'); x.nameIn.focus(); return; }
-      if (!x.sig()) { toast(`${x.nameIn.value.trim()} 님의 서명이 없습니다.`); x.el.scrollIntoView({ block: 'center' }); return; }
+      if (!x.hasName()) { toast(x.mode === 't' ? '이름이 빠진 서명칸이 있습니다.' : '촬영한 이름을 보고 이름 칸에 입력해 주세요.'); x.el.scrollIntoView({ block: 'center' }); x.nameIn.focus(); return; }
+      if (!x.sig()) { toast(`${x.name()} 님의 서명이 없습니다.`); x.el.scrollIntoView({ block: 'center' }); return; }
     }
-    const names = filled.map(x => x.nameIn.value.trim());
+    const names = filled.map(x => x.name()).filter(Boolean);
     if (new Set(names).size < names.length) { toast('같은 이름이 두 칸에 들어 있습니다.'); return; }
     const room = o.room();
     if (filled.length > room) { toast(room > 0 ? `더 받을 수 있는 서명은 ${room}명입니다.` : '서명 인원이 다 찼습니다.', 3500); return; }
@@ -70,26 +102,30 @@ function signSlots(box, o) {
     if (dup.length && !confirm(`${dup.join(', ')} 님은 이미 서명했습니다. 한 번 더 받을까요?`)) return;
     const list = [];
     for (const x of filled) {
-      const name = x.nameIn.value.trim(), used = x.getUsed();
-      const reuse = !!used && (await Registry.sigs(name)).some(y => y.g === used);
+      const name = x.name(), used = x.getUsed();
+      const reuse = !!name && !!used && (await Registry.sigs(name)).some(y => y.g === used);
       list.push({ name, sig: x.sig(), reuse, slot: x });
     }
     const saved = (await o.onSave(list)) || [];
     saved.forEach(it => it.slot.reset());
     // 기본 칸보다 많이 연 빈 칸은 정리
-    for (const x of slots.slice()) if (slots.length > INIT && !x.nameIn.value.trim() && !x.sig()) { x.el.remove(); slots.splice(slots.indexOf(x), 1); }
+    for (const x of slots.slice()) if (slots.length > INIT && !x.hasName() && !x.sig()) { x.el.remove(); slots.splice(slots.indexOf(x), 1); }
     renumber(); persist();
   };
   return {
     // 빈 칸에 이름 넣기 (등록 근로자 이름을 눌렀을 때)
     fill(name) {
-      const x = slots.find(s => !s.nameIn.value.trim()) || (slots.length < MAXSLOT ? add() : null);
+      const x = slots.find(s => !s.hasName()) || (slots.length < MAXSLOT ? add() : null);
       if (!x) return;
+      x.mode = 't';
+      $$('.nm-mode input', x.el).forEach(r => { r.checked = r.value === 't'; r.dispatchEvent(new Event('change')); });
       x.nameIn.value = name; x.nameIn.dispatchEvent(new Event('input')); x.nameIn.dispatchEvent(new Event('change'));
       x.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   };
 }
+// 근로자 이름 표시 (목록·결과지에는 이름 글자만)
+function nameCell(w) { return w ? esc(w.name) : ''; }
 // 서명칸 위에 한 번만 보여 주는 확인사항
 function confirmOnceHTML(groups) {
   return `<div class="confirm-once">${groups.map(g => `<div class="co-g"><b>${esc(g.title)}</b><ol>${g.items.map(it => `<li>${it}</li>`).join('')}</ol></div>`).join('')}
@@ -177,26 +213,67 @@ const Keep = (() => {
       const h = location.hash || '#/';
       if (document.body.classList.contains('locked')) return;
       const f = fields().map(el => (el.type === 'checkbox' || el.type === 'radio') ? { c: el.checked } : { v: el.value });
-      localStorage.setItem(K, JSON.stringify({ h, at: Date.now(), y: window.scrollY, f }));
+      const st = { h, at: Date.now(), y: window.scrollY, f };
+      localStorage.setItem(K, JSON.stringify(st));
+      if (EDIT.test(h) && f.length) putDraft(st); // 작성 화면이면 임시저장도 (기한 없음)
       Lock.keep();
     } catch (e) { /* 저장 불가 */ }
   }
+  // ----- 임시저장: 작성 화면의 입력 내용을 기한 없이 보관 → 다음에 그 화면을 열면 이어서 -----
+  const D = 'drafts', DMAX = 30;
+  const EDIT = /^#\/(s|t|m|l|z|h)\/[^/]+/; // 안전교육·TBM·장비측정·산안법·중처법·고위험요인 작성 화면
+  const drafts = () => { try { return JSON.parse(localStorage.getItem(D) || '{}'); } catch (e) { return {}; } };
+  function putDraft(st) {
+    const all = drafts(); all[st.h] = st;
+    const keys = Object.keys(all).sort((a, b) => all[b].at - all[a].at);
+    keys.slice(DMAX).forEach(k => delete all[k]);
+    try { localStorage.setItem(D, JSON.stringify(all)); } catch (e) { /* 저장 불가 */ }
+  }
+  function dropDraft(h) { const all = drafts(); if (all[h]) { delete all[h]; try { localStorage.setItem(D, JSON.stringify(all)); } catch (e) { /* 무시 */ } } }
+  // [임시저장] 버튼
+  function saveNow() {
+    snapshot();
+    toast('임시저장했습니다. 나중에 이 화면을 열면 이어서 작성할 수 있습니다.', 3000);
+  }
+  const apply = st => {
+    const els = fields();
+    if (els.length !== st.f.length) return false;
+    els.forEach((el, i) => {
+      const d = st.f[i];
+      if ('c' in d) { if (el.checked !== d.c) { el.checked = d.c; el.dispatchEvent(new Event('change', { bubbles: true })); } }
+      else if (el.value !== d.v) { el.value = d.v; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }
+    });
+    return true;
+  };
   const read = () => { try { const s = JSON.parse(localStorage.getItem(K) || 'null'); return s && Date.now() - s.at < WIN ? s : null; } catch (e) { return null; } };
   // 화면을 그린 뒤 호출: 같은 화면이면 입력값·스크롤을 되살린다
-  function restore() {
+  async function restore() {
+    const h = location.hash || '#/';
+    btn.classList.toggle('hide', !EDIT.test(h));
     const st = read();
-    if (!st || st.h !== (location.hash || '#/')) return;
-    try { localStorage.removeItem(K); } catch (e) { /* 무시 */ }
-    const els = fields();
-    if (els.length === st.f.length) {
-      els.forEach((el, i) => {
-        const d = st.f[i];
-        if ('c' in d) { if (el.checked !== d.c) { el.checked = d.c; el.dispatchEvent(new Event('change', { bubbles: true })); } }
-        else if (el.value !== d.v) { el.value = d.v; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }
-      });
+    if (st && st.h === h) { // 방금(30분 안) 다른 앱에 다녀온 경우
+      try { localStorage.removeItem(K); } catch (e) { /* 무시 */ }
+      apply(st);
+      setTimeout(() => window.scrollTo(0, st.y || 0), 80);
+      return;
     }
-    setTimeout(() => window.scrollTo(0, st.y || 0), 80);
+    // 임시저장한 내용: 기록이 그 뒤에 저장되지 않았을 때만 이어서 불러온다
+    const dr = drafts()[h];
+    if (!dr) return;
+    const m = h.match(/^#\/[a-z]\/([^/]+)/);
+    const rec = m ? await DB.get('sessions', m[1]).catch(() => null) : null;
+    if (!rec) { dropDraft(h); return; }
+    if ((rec.updated || rec.created || 0) > dr.at) { dropDraft(h); return; } // 더 최근에 저장됨
+    if (apply(dr)) toast('임시저장한 내용을 불러왔습니다. 이어서 작성하세요.', 3000);
+    dropDraft(h);
+    setTimeout(() => window.scrollTo(0, dr.y || 0), 80);
   }
+  // 작성 화면 오른쪽 아래 [임시저장] 버튼
+  const btn = document.createElement('button');
+  btn.type = 'button'; btn.className = 'btn tmpsave hide'; btn.textContent = '💾 임시저장';
+  btn.onclick = saveNow;
+  document.addEventListener('DOMContentLoaded', () => document.body.appendChild(btn));
+  if (document.body) document.body.appendChild(btn);
   // 앱을 새로 띄웠을 때(홈 주소) 30분 안에 보던 화면이 있으면 그 화면으로
   function resumeHash() {
     const st = read();
@@ -204,77 +281,88 @@ const Keep = (() => {
     if (st && (h === '#/' || h === '#') && st.h && st.h !== '#/') return st.h;
     return null;
   }
+  // 앱 안에서 다른 화면으로 옮길 때도 작성 화면의 입력 내용을 임시저장 (화면이 바뀌기 전에 실행)
+  let curHash = location.hash || '#/';
+  window.addEventListener('hashchange', () => {
+    try {
+      if (EDIT.test(curHash) && !document.body.classList.contains('locked')) {
+        const f = fields().map(el => (el.type === 'checkbox' || el.type === 'radio') ? { c: el.checked } : { v: el.value });
+        if (f.length) putDraft({ h: curHash, at: Date.now(), y: window.scrollY, f });
+      }
+    } catch (e) { /* 무시 */ }
+    curHash = location.hash || '#/';
+  });
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') snapshot(); });
   window.addEventListener('pagehide', snapshot);
-  return { snapshot, restore, resumeHash };
+  return { snapshot, restore, resumeHash, saveNow };
 })();
 
-// ---------- 종이 서명 촬영 ----------
-// 종이에 쓴 이름·서명을 찍고, 서명 부분을 손가락으로 골라 배경을 지운 서명 그림(500x200 PNG)으로 만든다.
-// 이름은 사진을 보며 확인 입력. 결과: { code, name } 또는 취소 시 null
-function paperSig({ name = '', fixedName = false } = {}) {
+// ---------- 종이 이름·서명 촬영 ----------
+// 종이에 쓴 이름 또는 서명을 찍고, 범위를 손가락으로 골라 배경을 지운 그림(PNG)으로 만든다.
+// kind: 'name'(이름 500x140) 또는 'sig'(서명 500x200, 굵기 선택). 결과: { code, level } 또는 취소 시 null
+function paperCrop({ kind = 'sig' } = {}) {
   return new Promise(async resolve => {
     const file = await pickFile('image/*', 'environment');
     if (!file) { resolve(null); return; }
     const src = await readImage(file, 1800, 0.92);
     const img = new Image();
     await new Promise(r => { img.onload = img.onerror = r; img.src = src; });
-    // 이름 범위(name)와 서명 범위(sig)를 각각 고른다. 이름이 정해진 칸(지도요원 등)은 서명 범위만
-    let rot = 0, off = 0, done = false, work = null, mode = fixedName ? 'sig' : 'name';
-    const boxes = { name: null, sig: null };
-    const COLOR = { name: '#1c7ed6', sig: '#2f9e44' }, LABEL = { name: '이름', sig: '서명' };
-    const m = modal(`<h2>종이 서명 등록</h2>
-      <p class="hint">${fixedName ? '사진에서 <b>서명 범위</b>를 손가락으로 끌어 사각형으로 고르세요.' : '사진에서 <b>① 이름 범위</b>와 <b>② 서명 범위</b>를 차례로 손가락으로 끌어 사각형으로 고르세요. 고른 이름은 크게 보여 주니 보고 확인해 입력합니다.'}</p>
-      ${fixedName ? '' : `<div class="seg ps-mode"><label><input type="radio" name="psm" value="name" checked><span>① 이름 범위</span></label><label><input type="radio" name="psm" value="sig"><span>② 서명 범위</span></label></div>`}
+    const isSig = kind === 'sig', what = isSig ? '서명' : '이름';
+    const W = 500, H = isSig ? 200 : 140;
+    let rot = 0, off = 0, done = false, work = null, box = null;
+    let level = (() => { try { const v = +localStorage.getItem('sigWidth'); return v >= 1 && v <= 5 ? v : 3; } catch (e) { return 3; } })();
+    const m = modal(`<h2>종이 ${what} 촬영</h2>
+      <p class="hint">사진에서 <b>${what} 범위</b>를 손가락으로 끌어 사각형으로 고르세요.</p>
       <div class="ps-wrap"><canvas class="ps-cv"></canvas></div>
       <div class="row ps-tools"><button type="button" class="btn sm" data-rot>↻ 사진 돌리기</button>
         <label class="ps-th">진하기 <input type="range" min="-60" max="60" step="5" value="0" data-th></label></div>
-      ${fixedName ? '' : `<div class="ps-prev-w"><span>사진의 이름 <small>(이름 범위)</small></span><canvas class="ps-nprev" width="500" height="140"></canvas></div>
-      <label>이름 <input name="pname" value="${esc(name)}" placeholder="위 사진의 이름을 보고 입력"></label>`}
-      <div class="ps-prev-w"><span>등록될 서명 <small>(서명 범위)</small></span><canvas class="ps-prev" width="500" height="200"></canvas></div>
-      ${fixedName ? `<p class="hint">이름: <b>${esc(name)}</b></p>` : ''}
-      <button type="button" class="btn big primary" data-ok>이름·서명 등록</button>`, { wide: true, onClose: () => { if (!done) resolve(null); } });
-    const cv = $('.ps-cv', m.el), prev = $('.ps-prev', m.el), nprev = $('.ps-nprev', m.el), nameIn = $('[name=pname]', m.el);
-    const setMode = v => { mode = v; const r = $(`[name=psm][value=${v}]`, m.el); if (r) r.checked = true; };
-    $$('[name=psm]', m.el).forEach(r => r.onchange = () => { mode = r.value; });
-    // 돌린 사진을 작업용 캔버스로
+      ${isSig ? `<div class="sigw ps-w"><span>서명 굵기</span>${[1, 2, 3, 4, 5].map(n => `<button type="button" data-lv="${n}" title="${['', '아주 가늘게', '가늘게', '보통', '굵게', '아주 굵게'][n]}"><i style="height:${[0, 2, 3, 4, 6, 8][n]}px"></i></button>`).join('')}</div>` : ''}
+      <div class="ps-prev-w"><span>등록될 ${what}</span><canvas class="ps-prev ${isSig ? '' : 'nm'}" width="${W}" height="${H}"></canvas></div>
+      <button type="button" class="btn big primary" data-ok>${what} 넣기</button>`, { wide: true, onClose: () => { if (!done) resolve(null); } });
+    const cv = $('.ps-cv', m.el), prev = $('.ps-prev', m.el);
+    const raw = document.createElement('canvas'); raw.width = W; raw.height = H; // 굵기 적용 전
     const makeWork = () => {
       const w = rot % 180 ? img.naturalHeight : img.naturalWidth, h = rot % 180 ? img.naturalWidth : img.naturalHeight;
       work = document.createElement('canvas'); work.width = w; work.height = h;
       const x = work.getContext('2d');
       x.translate(w / 2, h / 2); x.rotate(rot * Math.PI / 180); x.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
-      boxes.name = boxes.sig = null;
-      if (!fixedName) setMode('name');
+      box = null;
     };
-    let k = 1;
+    const color = isSig ? '#2f9e44' : '#1c7ed6';
     const show = () => {
       const maxW = $('.ps-wrap', m.el).clientWidth || 320, maxH = Math.max(240, window.innerHeight * 0.5);
-      k = Math.min(maxW / work.width, maxH / work.height);
+      const k = Math.min(maxW / work.width, maxH / work.height);
       cv.width = Math.round(work.width * k); cv.height = Math.round(work.height * k);
       const x = cv.getContext('2d');
       x.drawImage(work, 0, 0, cv.width, cv.height);
-      for (const key of ['name', 'sig']) {
-        const b = boxes[key]; if (!b) continue;
-        const [bx, by, bw, bh] = b.map(v => v * k);
-        x.fillStyle = COLOR[key] + '22'; x.fillRect(bx, by, bw, bh);
-        x.strokeStyle = COLOR[key]; x.lineWidth = 3; x.strokeRect(bx, by, bw, bh);
-        x.font = 'bold 14px sans-serif'; const tw = x.measureText(LABEL[key]).width + 10;
-        x.fillStyle = COLOR[key]; x.fillRect(bx, Math.max(0, by - 20), tw, 20);
-        x.fillStyle = '#fff'; x.fillText(LABEL[key], bx + 5, Math.max(15, by - 5));
+      if (box) {
+        const [bx, by, bw, bh] = box.map(v => v * k);
+        x.fillStyle = 'rgba(0,0,0,.45)';
+        x.fillRect(0, 0, cv.width, by); x.fillRect(0, by + bh, cv.width, cv.height - by - bh);
+        x.fillRect(0, by, bx, bh); x.fillRect(bx + bw, by, cv.width - bx - bw, bh);
+        x.strokeStyle = color; x.lineWidth = 3; x.strokeRect(bx, by, bw, bh);
       }
       update();
     };
     let result = '';
-    const update = () => {
-      result = inkFrom(boxes.sig, prev);
-      if (nprev) inkFrom(boxes.name, nprev);
-    };
-    // 고른 범위에서 잉크만 남기고 배경을 지워 out 캔버스에 맞춘다 (PNG 반환)
-    function inkFrom(box, out) {
+    const markLv = () => $$('[data-lv]', m.el).forEach(b => b.classList.toggle('on', +b.dataset.lv === level));
+    function update() {
+      const ok = inkFrom(box, raw);
+      const pc = prev.getContext('2d'); pc.clearRect(0, 0, W, H);
+      result = '';
+      if (!ok) return;
+      if (isSig && level !== 3) {
+        const t = new Image(); t.src = Sig.inkWeight(raw, level - 3);
+        t.onload = () => { pc.clearRect(0, 0, W, H); pc.drawImage(t, 0, 0); };
+        result = t.src;
+      } else { pc.drawImage(raw, 0, 0); result = raw.toDataURL('image/png'); }
+    }
+    // 고른 범위에서 잉크만 남기고 배경을 지워 out 캔버스에 맞춘다
+    function inkFrom(b, out) {
       const pc = out.getContext('2d');
       pc.clearRect(0, 0, out.width, out.height);
-      if (!box || box[2] < 8 || box[3] < 8) return '';
-      const [bx, by, bw, bh] = box.map(Math.round);
+      if (!b || b[2] < 8 || b[3] < 8) return false;
+      const [bx, by, bw, bh] = b.map(Math.round);
       const px = work.getContext('2d').getImageData(bx, by, bw, bh).data, n = bw * bh;
       const g = new Uint8Array(n), hist = new Array(256).fill(0);
       for (let i = 0; i < n; i++) { const v = (px[i * 4] * 299 + px[i * 4 + 1] * 587 + px[i * 4 + 2] * 114) / 1000 | 0; g[i] = v; hist[v]++; }
@@ -297,7 +385,7 @@ function paperSig({ name = '', fixedName = false } = {}) {
         a[i] = al * 255;
         if (al > 0.6) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
       }
-      if (x1 < 0) return '';
+      if (x1 < 0) return false;
       const tw = x1 - x0 + 1, th = y1 - y0 + 1;
       const ink = document.createElement('canvas'); ink.width = tw; ink.height = th;
       const id = ink.getContext('2d').createImageData(tw, th);
@@ -309,30 +397,29 @@ function paperSig({ name = '', fixedName = false } = {}) {
       const pad = 0.06, s = Math.min(out.width * (1 - 2 * pad) / tw, out.height * (1 - 2 * pad) / th);
       pc.imageSmoothingQuality = 'high';
       pc.drawImage(ink, (out.width - tw * s) / 2, (out.height - th * s) / 2, tw * s, th * s);
-      return out.toDataURL('image/png');
+      return true;
     }
-    // 손가락으로 끌어 지금 고르는 범위(이름/서명)의 사각형 그리기
     let p0 = null;
     const at = e => { const r = cv.getBoundingClientRect(); return [Math.max(0, Math.min(work.width, (e.clientX - r.left) / r.width * work.width)), Math.max(0, Math.min(work.height, (e.clientY - r.top) / r.height * work.height))]; };
     cv.style.touchAction = 'none';
     cv.addEventListener('pointerdown', e => { e.preventDefault(); try { cv.setPointerCapture(e.pointerId); } catch (err) { /* 무시 */ } p0 = at(e); });
     cv.addEventListener('pointermove', e => {
       if (!p0) return; const p = at(e);
-      boxes[mode] = [Math.min(p0[0], p[0]), Math.min(p0[1], p[1]), Math.abs(p[0] - p0[0]), Math.abs(p[1] - p0[1])];
+      box = [Math.min(p0[0], p[0]), Math.min(p0[1], p[1]), Math.abs(p[0] - p0[0]), Math.abs(p[1] - p0[1])];
       show();
     });
-    const up = () => {
-      if (p0 && mode === 'name' && boxes.name && !boxes.sig) setMode('sig'); // 이름을 고르면 다음은 서명 범위
-      p0 = null;
-    };
+    const up = () => { p0 = null; };
     cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
     $('[data-rot]', m.el).onclick = () => { rot = (rot + 90) % 360; makeWork(); show(); };
     $('[data-th]', m.el).oninput = e => { off = +e.target.value; update(); }; // 오른쪽으로 갈수록 진하게
+    $$('[data-lv]', m.el).forEach(b => b.onclick = () => {
+      level = +b.dataset.lv; markLv(); update();
+      try { localStorage.setItem('sigWidth', level); } catch (e) { /* 저장 불가 */ }
+    });
+    markLv();
     $('[data-ok]', m.el).onclick = () => {
-      if (!result) { toast('사진에서 서명 범위를 끌어서 고르세요.'); setMode('sig'); return; }
-      const nm = fixedName ? name : nameIn.value.trim();
-      if (!fixedName && !nm) { toast('이름을 입력하세요. (사진의 이름 범위를 보고 입력)'); nameIn.focus(); return; }
-      done = true; m.close(); resolve({ code: result, name: nm });
+      if (!result) { toast(`사진에서 ${what} 범위를 끌어서 고르세요.`); return; }
+      done = true; m.close(); resolve({ code: result, level: isSig ? level : 3 });
     };
     makeWork();
     show();

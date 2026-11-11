@@ -465,7 +465,7 @@ async function sessionView(id, stepStr) {
       <div id="slots"></div>` + nav(2, 4);
     let render = () => {
       $('#cnt').textContent = `${s.workers.length}명`;
-      $('#sl').innerHTML = s.workers.length ? s.workers.map((w, i) => `<li><img src="${Sig.toImage(w.sig, 250, 100)}"><div><b>${esc(w.name)}</b><span>${esc(w.via)} · ${esc(Report.fmtDate(new Date(w.at * 1000).toISOString()))}</span></div><button class="btn ghost sm" data-del="${i}">삭제</button></li>`).join('')
+      $('#sl').innerHTML = s.workers.length ? s.workers.map((w, i) => `<li><img src="${Sig.toImage(w.sig, 250, 100)}"><div><b>${nameCell(w)}</b><span>${esc(w.via)} · ${esc(Report.fmtDate(new Date(w.at * 1000).toISOString()))}</span></div><button class="btn ghost sm" data-del="${i}">삭제</button></li>`).join('')
         : '<li class="empty">아직 받은 서명이 없습니다.</li>';
       $$('[data-del]', body).forEach(b => b.onclick = async () => {
         if (!confirm('이 서명을 삭제할까요?')) return;
@@ -510,9 +510,9 @@ async function sessionView(id, stepStr) {
         const at = Math.floor(Date.now() / 1000);
         for (const x of list) s.workers.push({ name: x.name, sig: x.sig, at, via: x.reuse ? '현장(이전 서명)' : '현장(지도요원 기기)' });
         await saveSession(s);
-        await Registry.addPeople(s.site, list.map(x => x.name));
-        for (const x of list) await Registry.addSig(x.name, x.sig, s.site, at * 1000);
-        render(); toast(`${list.map(x => x.name).join(', ')} 님 서명을 저장했습니다.`, 3000);
+        await Registry.addPeople(s.site, list.map(x => x.name).filter(Boolean));
+        for (const x of list) if (x.name) await Registry.addSig(x.name, x.sig, s.site, at * 1000);
+        render(); toast(`${list.length}명 서명을 저장했습니다.`, 3000);
         return list;
       }
     });
@@ -676,18 +676,16 @@ function attachPastSigs(root, nameIn, pad) {
   const bar = $('.sigw', root);
   if (bar) {
     const b = document.createElement('button');
-    b.type = 'button'; b.className = 'btn ghost sm sig-paper'; b.textContent = '📷 종이 서명';
+    b.type = 'button'; b.className = 'btn ghost sm sig-paper'; b.textContent = '📷 서명 촬영';
     const clr = $('[data-clr]', bar);
     clr ? bar.insertBefore(b, clr) : bar.appendChild(b);
     b.onclick = async () => {
-      const fixed = nameIn.readOnly || nameIn.type === 'hidden';
-      const r = await paperSig({ name: nameIn.value.trim(), fixedName: fixed });
+      const r = await paperCrop({ kind: 'sig' });
       if (!r) return;
-      if (!fixed && r.name && r.name !== nameIn.value.trim()) { nameIn.value = r.name; nameIn.dispatchEvent(new Event('input')); nameIn.dispatchEvent(new Event('change')); }
       used = null; mark();
-      pad.load(r.code);
+      pad.load(r.code, r.level);
       $('canvas', root).dispatchEvent(new Event('sigpaper', { bubbles: true }));
-      toast('종이 서명을 서명칸에 넣었습니다.');
+      toast('촬영한 서명을 서명칸에 넣었습니다. 굵기 버튼으로 굵기를 바꿀 수 있습니다.');
     };
   }
   return () => used;

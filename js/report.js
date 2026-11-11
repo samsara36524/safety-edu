@@ -89,11 +89,11 @@ const Report = (() => {
       const sigRows = [];
       for (let i = 0; i < Math.max(6, session.workers.length); i++) {
         const w = session.workers[i];
-        sigRows.push(`<tr class="rp-sigrow"><td>${i + 1}</td><td>${w ? esc(w.name) : ''}</td>
+        sigRows.push(`<tr class="rp-sigrow"><td>${i + 1}</td><td>${w ? nameCell(w, 'rp-nmimg') : ''}</td>
           <td class="rp-sigcell">${w ? `<img src="${Sig.toImage(w.sig, 400, 160)}">` : ''}</td>
-          <td>${w ? esc(w.via) : ''}</td><td>${w ? esc(fmtDate(new Date(w.at * 1000).toISOString())) : ''}</td></tr>`);
+          <td>${w ? esc(fmtDate(new Date(w.at * 1000).toISOString())) : ''}</td></tr>`);
       }
-      flow.table(`<tr><th style="width:7%">번호</th><th style="width:20%">성명</th><th>서명</th><th style="width:15%">확인방식</th><th style="width:22%">확인일시</th></tr>`,
+      flow.table(`<tr><th style="width:8%">번호</th><th style="width:24%">성명</th><th>서명</th><th style="width:24%">확인일시</th></tr>`,
         sigRows, '교육 참석자 확인 및 서명 (아래 교육 내용을 교육받고 확인하였습니다)');
       flow.add(`<div class="rp-cap">교육 내용</div>`);
       for (const t of topics) {
