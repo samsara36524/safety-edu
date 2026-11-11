@@ -12,7 +12,7 @@ const Sig = (() => {
   const WDEF = 3;
   const unitW = (lv, w) => BASE[w || WDEF] * (0.6 + lv / WMAX * 0.6); // 기준의 약 0.64 ~ 1.2배
   const KEY = 'sigWidth';
-  const INK = '#5a3a32'; // 서명 잉크: 진한 갈색 (펜 서명 느낌)
+  const INK = '#111'; // 서명 잉크: 검정
   const savedW = () => { try { const v = +localStorage.getItem(KEY); return v >= 1 && v <= 5 ? v : WDEF; } catch (e) { return WDEF; } };
 
   function pad(canvas) {
