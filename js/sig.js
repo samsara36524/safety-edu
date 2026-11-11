@@ -12,6 +12,7 @@ const Sig = (() => {
   const WDEF = 3;
   const unitW = (lv, w) => BASE[w || WDEF] * (0.6 + lv / WMAX * 0.6); // 기준의 약 0.64 ~ 1.2배
   const KEY = 'sigWidth';
+  const INK = '#5a3a32'; // 서명 잉크: 진한 갈색 (펜 서명 느낌)
   const savedW = () => { try { const v = +localStorage.getItem(KEY); return v >= 1 && v <= 5 ? v : WDEF; } catch (e) { return WDEF; } };
 
   function pad(canvas) {
@@ -119,7 +120,7 @@ const Sig = (() => {
   }
 
   // 그리기: 굵기 정보가 있으면 붓 효과, 없으면(예전 서명) 일정한 선
-  function draw(canvas, strokes, color = '#111') {
+  function draw(canvas, strokes, color = INK) {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const gh = strokes.gh || GH;
@@ -141,15 +142,21 @@ const Sig = (() => {
       brush(ctx, s, sx, sy, u, strokes.w, ox, oy);
     }
   }
-  // 점 사이를 부드러운 곡선(캣멀-롬)으로 잇고, 굵기가 변하는 원을 촘촘히 찍어 붓 획을 만든다
+  // 점 사이를 부드러운 곡선(캣멀-롬)으로 잇고, 굵기가 변하는 원을 촘촘히 찍어 펜 획을 만든다
+  // 펜 서명 모양: 획 시작은 둥글고 도톰하게, 끝은 길게 가늘어지며 빠져나가게(삐침)
   function brush(ctx, s, sx, sy, u, w, ox = 0, oy = 0) {
     const n = s.length;
     const P = s.map(([x, y]) => [ox + x * sx, oy + y * sy]);
+    // 획 길이(격자 단위)를 따라 끝부분 가늘기 계산
+    const acc = [0];
+    for (let i = 1; i < n; i++) acc.push(acc[i - 1] + Math.hypot(s[i][0] - s[i - 1][0], s[i][1] - s[i - 1][1]));
+    const total = acc[n - 1] || 0;
+    const tail = Math.min(total * 0.45, Math.max(6, total * 0.22)); // 끝 22% (최소 6칸) 동안 가늘어짐
     const R = s.map(([, , lv], i) => {
-      // 붓끝: 획의 처음과 끝을 가늘게
-      const k = Math.min(i, n - 1 - i);
-      const taper = n <= 3 ? 0.8 : k === 0 ? 0.5 : k === 1 ? 0.8 : 1;
-      return Math.max(0.5, unitW(lv, w) * u * 0.5 * taper);
+      const left = total - acc[i];
+      const tTail = tail > 0 && left < tail ? 0.18 + 0.82 * Math.pow(left / tail, 0.75) : 1; // 끝으로 갈수록 0.18배까지
+      const tHead = i === 0 ? 0.95 : 1;
+      return Math.max(0.35, unitW(lv, w) * u * 0.5 * tTail * tHead);
     });
     ctx.beginPath();
     const dot = (x, y, r) => { ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, Math.PI * 2); };
