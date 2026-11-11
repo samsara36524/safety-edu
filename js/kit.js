@@ -30,7 +30,7 @@ function signSlots(box, o) {
     const getUsed = attachPastSigs(el, nameIn, pad);
     const x = {
       el, nameIn, pad, getUsed,
-      sig: () => getUsed() || (pad.isEmpty() ? '' : Sig.encode(pad.strokes())),
+      sig: () => getUsed() || pad.code(),
       draft: () => ({ name: nameIn.value.trim(), sig: x.sig() }),
       reset() { nameIn.value = ''; nameIn.dispatchEvent(new Event('input')); pad.clear(); }
     };
@@ -41,6 +41,7 @@ function signSlots(box, o) {
     $('canvas', el).addEventListener('pointerup', later);
     $('[data-clr]', el).addEventListener('click', () => { pad.clear(); later(); });
     el.addEventListener('change', later); // 이전 서명 체크 등
+    el.addEventListener('sigpaper', later); // 종이 서명 촬영
     $('.slot-x', el).onclick = () => {
       if (slots.length > INIT) { el.remove(); slots.splice(slots.indexOf(x), 1); renumber(); } else x.reset();
       later();
@@ -207,3 +208,117 @@ const Keep = (() => {
   window.addEventListener('pagehide', snapshot);
   return { snapshot, restore, resumeHash };
 })();
+
+// ---------- 종이 서명 촬영 ----------
+// 종이에 쓴 이름·서명을 찍고, 서명 부분을 손가락으로 골라 배경을 지운 서명 그림(500x200 PNG)으로 만든다.
+// 이름은 사진을 보며 확인 입력. 결과: { code, name } 또는 취소 시 null
+function paperSig({ name = '', fixedName = false } = {}) {
+  return new Promise(async resolve => {
+    const file = await pickFile('image/*', 'environment');
+    if (!file) { resolve(null); return; }
+    const src = await readImage(file, 1800, 0.92);
+    const img = new Image();
+    await new Promise(r => { img.onload = img.onerror = r; img.src = src; });
+    let rot = 0, box = null, off = 0, done = false, work = null;
+    const m = modal(`<h2>종이 서명 등록</h2>
+      <p class="hint">사진에서 <b>서명 부분</b>을 손가락으로 끌어 사각형으로 고르세요. 이름은 사진을 보고 확인해 입력합니다.</p>
+      <div class="ps-wrap"><canvas class="ps-cv"></canvas></div>
+      <div class="row ps-tools"><button type="button" class="btn sm" data-rot>↻ 사진 돌리기</button><button type="button" class="btn sm ghost" data-all>전체 선택</button>
+        <label class="ps-th">진하기 <input type="range" min="-60" max="60" step="5" value="0" data-th></label></div>
+      <div class="ps-prev-w"><span>등록될 서명</span><canvas class="ps-prev" width="500" height="200"></canvas></div>
+      <label>이름 <input name="pname" value="${esc(name)}" ${fixedName ? 'readonly class="fixed"' : ''} placeholder="사진의 이름을 보고 입력"></label>
+      <button type="button" class="btn big primary" data-ok>서명 등록</button>`, { wide: true, onClose: () => { if (!done) resolve(null); } });
+    const cv = $('.ps-cv', m.el), prev = $('.ps-prev', m.el), nameIn = $('[name=pname]', m.el);
+    // 돌린 사진을 작업용 캔버스로
+    const makeWork = () => {
+      const w = rot % 180 ? img.naturalHeight : img.naturalWidth, h = rot % 180 ? img.naturalWidth : img.naturalHeight;
+      work = document.createElement('canvas'); work.width = w; work.height = h;
+      const x = work.getContext('2d');
+      x.translate(w / 2, h / 2); x.rotate(rot * Math.PI / 180); x.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+      box = null;
+    };
+    let k = 1;
+    const show = () => {
+      const maxW = $('.ps-wrap', m.el).clientWidth || 320, maxH = Math.max(240, window.innerHeight * 0.5);
+      k = Math.min(maxW / work.width, maxH / work.height);
+      cv.width = Math.round(work.width * k); cv.height = Math.round(work.height * k);
+      const x = cv.getContext('2d');
+      x.drawImage(work, 0, 0, cv.width, cv.height);
+      if (box) {
+        x.fillStyle = 'rgba(0,0,0,.45)';
+        const [bx, by, bw, bh] = box.map(v => v * k);
+        x.fillRect(0, 0, cv.width, by); x.fillRect(0, by + bh, cv.width, cv.height - by - bh);
+        x.fillRect(0, by, bx, bh); x.fillRect(bx + bw, by, cv.width - bx - bw, bh);
+        x.strokeStyle = '#2f9e44'; x.lineWidth = 3; x.strokeRect(bx, by, bw, bh);
+      }
+      extract();
+    };
+    // 고른 부분에서 잉크만 남기고 배경을 지워 500x200에 맞춘다
+    let result = '';
+    function extract() {
+      const pc = prev.getContext('2d');
+      pc.clearRect(0, 0, prev.width, prev.height);
+      result = '';
+      if (!box || box[2] < 8 || box[3] < 8) return;
+      const [bx, by, bw, bh] = box.map(Math.round);
+      const d = work.getContext('2d').getImageData(bx, by, bw, bh), px = d.data, n = bw * bh;
+      const g = new Uint8Array(n), hist = new Array(256).fill(0);
+      for (let i = 0; i < n; i++) { const v = (px[i * 4] * 299 + px[i * 4 + 1] * 587 + px[i * 4 + 2] * 114) / 1000 | 0; g[i] = v; hist[v]++; }
+      // 오츠(Otsu) 방식으로 잉크/종이 경계 밝기 찾기
+      let sum = 0; for (let i = 0; i < 256; i++) sum += i * hist[i];
+      let sB = 0, wB = 0, best = 0, T = 128;
+      for (let t = 0; t < 256; t++) {
+        wB += hist[t]; if (!wB) continue;
+        const wF = n - wB; if (!wF) break;
+        sB += t * hist[t];
+        const mB = sB / wB, mF = (sum - sB) / wF, v = wB * wF * (mB - mF) * (mB - mF);
+        if (v > best) { best = v; T = t; }
+      }
+      T = Math.max(20, Math.min(235, T + off));
+      const soft = Math.max(12, T * 0.22);
+      const a = new Uint8ClampedArray(n);
+      let x0 = bw, y0 = bh, x1 = -1, y1 = -1;
+      for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) {
+        const i = y * bw + x, al = Math.max(0, Math.min(1, (T - g[i]) / soft + 0.5));
+        a[i] = al * 255;
+        if (al > 0.6) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+      }
+      if (x1 < 0) return;
+      const tw = x1 - x0 + 1, th = y1 - y0 + 1;
+      const ink = document.createElement('canvas'); ink.width = tw; ink.height = th;
+      const id = ink.getContext('2d').createImageData(tw, th);
+      for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) {
+        const j = (y * tw + x) * 4;
+        id.data[j] = id.data[j + 1] = id.data[j + 2] = 17; id.data[j + 3] = a[(y + y0) * bw + (x + x0)];
+      }
+      ink.getContext('2d').putImageData(id, 0, 0);
+      const pad = 0.06, s = Math.min(prev.width * (1 - 2 * pad) / tw, prev.height * (1 - 2 * pad) / th);
+      pc.imageSmoothingQuality = 'high';
+      pc.drawImage(ink, (prev.width - tw * s) / 2, (prev.height - th * s) / 2, tw * s, th * s);
+      result = prev.toDataURL('image/png');
+    }
+    // 손가락으로 끌어 사각형 고르기
+    let p0 = null;
+    const at = e => { const r = cv.getBoundingClientRect(); return [Math.max(0, Math.min(work.width, (e.clientX - r.left) / r.width * work.width)), Math.max(0, Math.min(work.height, (e.clientY - r.top) / r.height * work.height))]; };
+    cv.style.touchAction = 'none';
+    cv.addEventListener('pointerdown', e => { e.preventDefault(); try { cv.setPointerCapture(e.pointerId); } catch (err) { /* 무시 */ } p0 = at(e); });
+    cv.addEventListener('pointermove', e => {
+      if (!p0) return; const p = at(e);
+      box = [Math.min(p0[0], p[0]), Math.min(p0[1], p[1]), Math.abs(p[0] - p0[0]), Math.abs(p[1] - p0[1])];
+      show();
+    });
+    const up = () => { p0 = null; };
+    cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+    $('[data-rot]', m.el).onclick = () => { rot = (rot + 90) % 360; makeWork(); show(); };
+    $('[data-all]', m.el).onclick = () => { box = [0, 0, work.width, work.height]; show(); };
+    $('[data-th]', m.el).oninput = e => { off = +e.target.value; extract(); }; // 오른쪽으로 갈수록 진하게(잉크로 보는 밝기 기준을 올림)
+    $('[data-ok]', m.el).onclick = () => {
+      if (!result) { toast('사진에서 서명 부분을 끌어서 고르세요.'); return; }
+      const nm = nameIn.value.trim();
+      if (!fixedName && !nm) { toast('이름을 입력하세요.'); nameIn.focus(); return; }
+      done = true; m.close(); resolve({ code: result, name: nm });
+    };
+    makeWork();
+    show();
+  });
+}

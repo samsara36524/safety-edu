@@ -673,6 +673,24 @@ function attachPastSigs(root, nameIn, pad) {
   nameIn.addEventListener('input', showPast);
   nameIn.addEventListener('change', showPast);
   showPast();
+  // 종이에 쓴 이름·서명을 촬영해 등록
+  const bar = $('.sigw', root);
+  if (bar) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'btn ghost sm sig-paper'; b.textContent = '📷 종이 서명';
+    const clr = $('[data-clr]', bar);
+    clr ? bar.insertBefore(b, clr) : bar.appendChild(b);
+    b.onclick = async () => {
+      const fixed = nameIn.readOnly || nameIn.type === 'hidden';
+      const r = await paperSig({ name: nameIn.value.trim(), fixedName: fixed });
+      if (!r) return;
+      if (!fixed && r.name && r.name !== nameIn.value.trim()) { nameIn.value = r.name; nameIn.dispatchEvent(new Event('input')); nameIn.dispatchEvent(new Event('change')); }
+      used = null; mark();
+      pad.load(r.code);
+      $('canvas', root).dispatchEvent(new Event('sigpaper', { bubbles: true }));
+      toast('종이 서명을 서명칸에 넣었습니다.');
+    };
+  }
   return () => used;
 }
 // ---------- 현장 등록·수정 창 ----------
@@ -779,7 +797,7 @@ function bindWorkerForm(root, pad, onDone) {
     if (!name) { toast('이름을 입력하세요.'); return; }
     if ($$('input[data-c]', root).some(c => !c.checked)) { toast('모든 항목을 확인(체크)해 주세요.'); return; }
     if (pad.isEmpty()) { toast('서명을 해 주세요.'); return; }
-    onDone({ name, sig: Sig.encode(pad.strokes()) });
+    onDone({ name, sig: pad.code() });
   };
 }
 async function workerView(code) {

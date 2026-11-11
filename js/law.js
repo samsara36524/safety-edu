@@ -188,9 +188,10 @@ const Law = (() => {
       if (t[key]) setTimeout(() => pad.load(t[key]), 60);
       const getUsed = attachPastSigs(root, nameIn, pad);
       $('[data-clr]', root).addEventListener('click', () => { pad.clear(); t[key] = ''; later(); });
-      const store = () => { t[key] = getUsed() || (pad.isEmpty() ? '' : Sig.encode(pad.strokes())); later(); };
+      const store = () => { t[key] = getUsed() || pad.code(); later(); };
       $('canvas', root).addEventListener('pointerup', () => setTimeout(store, 30));
       $('canvas', root).addEventListener('sigwidth', () => setTimeout(store, 30));
+      $('canvas', root).addEventListener('sigpaper', () => setTimeout(store, 30));
       root.addEventListener('click', e => { if (e.target.closest('[data-g]')) setTimeout(store, 30); });
       return { pad, store };
     };

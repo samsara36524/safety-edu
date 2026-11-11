@@ -13,10 +13,13 @@ const Sig = (() => {
   const unitW = (lv, w) => BASE[w || WDEF] * (0.6 + lv / WMAX * 0.6); // 기준의 약 0.64 ~ 1.2배
   const KEY = 'sigWidth';
   const INK = '#111'; // 서명 잉크: 검정
+  // 종이 서명을 촬영해 만든 서명은 'data:image/png...' 그림 그대로를 서명 코드로 쓴다 (500x200, 배경 투명)
+  const isImg = code => typeof code === 'string' && code.startsWith('data:image');
   const savedW = () => { try { const v = +localStorage.getItem(KEY); return v >= 1 && v <= 5 ? v : WDEF; } catch (e) { return WDEF; } };
 
   function pad(canvas) {
     let strokes = [], cur = null, last = null, raf = 0, sp = null;
+    let bg = null, bgCode = ''; // 불러온 사진 서명
     strokes.w = savedW(); strokes.gh = GH;
     // 서명칸 비율에 맞춰 세로 격자 크기를 정한다 (빈 칸일 때만 바꿈)
     const setGh = () => {
@@ -47,7 +50,14 @@ const Sig = (() => {
       if (!strokes.length) setGh();
       redraw();
     }
-    const redraw = () => draw(canvas, strokes);
+    const redraw = () => {
+      draw(canvas, strokes);
+      if (bg && bg.complete && bg.naturalWidth) { // 사진 서명: 비율 유지해 가운데
+        const ctx = canvas.getContext('2d'), s = Math.min(canvas.width / bg.naturalWidth, canvas.height / bg.naturalHeight);
+        const w = bg.naturalWidth * s, h = bg.naturalHeight * s;
+        ctx.drawImage(bg, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
+      }
+    };
     const later = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; redraw(); }); };
     function xy(e) {
       const r = canvas.getBoundingClientRect();
@@ -97,6 +107,7 @@ const Sig = (() => {
     }
     canvas.addEventListener('pointerdown', e => {
       e.preventDefault(); canvas.setPointerCapture(e.pointerId);
+      if (bg) { bg = null; bgCode = ''; } // 사진 서명 위에 쓰기 시작하면 새로 쓰는 서명으로
       cur = []; last = null; sp = null; strokes.push(cur); add(e); later();
     });
     canvas.addEventListener('pointermove', e => {
@@ -112,9 +123,18 @@ const Sig = (() => {
     requestAnimationFrame(fit);
     window.addEventListener('resize', fit);
     return {
-      clear() { const w = strokes.w; strokes = []; strokes.w = w; setGh(); redraw(); },
-      load(code) { const d = decode(code); strokes = d; strokes.w = d.w || WDEF; strokes.gh = d.gh || GH; markW(); redraw(); },
-      isEmpty() { return strokes.reduce((n, s) => n + s.length, 0) < 3; },
+      clear() { const w = strokes.w; strokes = []; strokes.w = w; bg = null; bgCode = ''; setGh(); redraw(); },
+      load(code) {
+        if (isImg(code)) {
+          const w = strokes.w; strokes = []; strokes.w = w; setGh();
+          bgCode = code; bg = new Image(); bg.onload = redraw; bg.src = code; redraw(); return;
+        }
+        bg = null; bgCode = '';
+        const d = decode(code); strokes = d; strokes.w = d.w || WDEF; strokes.gh = d.gh || GH; markW(); redraw();
+      },
+      isEmpty() { return !bg && strokes.reduce((n, s) => n + s.length, 0) < 3; },
+      // 저장할 서명 코드 (사진 서명이면 그 그림, 아니면 획 코드, 비었으면 '')
+      code() { return bg ? bgCode : (this.isEmpty() ? '' : encode(this.strokes())); },
       strokes() { const r = strokes.map(s => simplify(s, 0.35)); r.w = strokes.w; r.gh = strokes.gh; return r; }
     };
   }
@@ -259,10 +279,11 @@ const Sig = (() => {
 
   // 서명 이미지(PNG data URL) 만들기
   function toImage(code, w = 500, h = 200) {
+    if (isImg(code)) return code; // 사진 서명은 이미 5:2 그림
     const c = document.createElement('canvas'); c.width = w; c.height = h;
     draw(c, decode(code));
     return c.toDataURL('image/png');
   }
 
-  return { pad, encode, decode, draw, toImage };
+  return { pad, encode, decode, draw, toImage, isImg };
 })();
