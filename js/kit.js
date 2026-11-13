@@ -446,3 +446,59 @@ function paperCrop({ kind = 'sig' } = {}) {
     show();
   });
 }
+
+// ---------- 와이파이 없는 곳에서 사용 (오프라인) ----------
+// 앱이 쓰는 모든 파일(화면·라이브러리·교육자료 그림·평가표 자료·PDF 도구)을 기기에 미리 저장해 두고,
+// 인터넷이 없을 때는 화면에 '오프라인'을 표시하고 할 수 있는 방법을 안내한다.
+const Offline = (() => {
+  const cacheName = () => 'safety-edu-v' + APP_VERSION; // sw.js 의 CACHE 와 같은 이름
+  const FLAG = 'offlinePrep';
+  function assets() {
+    const set = new Set(['./', 'index.html', 'manifest.webmanifest', 'data/topics.json', 'data/extra.json', 'data/sif.json',
+      'vendor/pdfjs/pdf.min.js', 'vendor/pdfjs/pdf.worker.min.js', 'img/brand-logo.png', 'img/brand-mark.png',
+      'icons/app-192.png', 'icons/app-512.png', 'icons/maskable-192.png', 'icons/maskable-512.png', 'icons/apple-180.png', 'icons/favicon-64.png']);
+    document.querySelectorAll('script[src], link[rel=stylesheet]').forEach(e => set.add((e.getAttribute('src') || e.getAttribute('href')).split('?')[0]));
+    // 교육자료 안의 그림 경로
+    const walk = v => {
+      if (typeof v === 'string') { if (/^img\/[\w./-]+\.(jpe?g|png|webp)$/i.test(v)) set.add(v); }
+      else if (Array.isArray(v)) v.forEach(walk);
+      else if (v && typeof v === 'object') Object.values(v).forEach(walk);
+    };
+    walk((Store.topics || []).filter(t => !t.custom));
+    return [...set];
+  }
+  async function status() {
+    if (!('caches' in window)) return null;
+    const c = await caches.open(cacheName()), list = assets();
+    let ok = 0;
+    for (const u of list) if (await c.match(u, { ignoreSearch: true })) ok++;
+    return { ok, total: list.length };
+  }
+  async function prepare(onProgress) {
+    if (!('caches' in window)) throw new Error('이 브라우저는 오프라인 저장을 지원하지 않습니다.');
+    const c = await caches.open(cacheName()), list = assets();
+    let done = 0, fail = 0;
+    for (const u of list) {
+      if (!(await c.match(u, { ignoreSearch: true }))) {
+        try { const r = await fetch(u, { cache: 'no-cache' }); if (r.ok) await c.put(u, r); else fail++; } catch (e) { fail++; }
+      }
+      done++; onProgress && onProgress(done, list.length);
+    }
+    if (!fail) { try { localStorage.setItem(FLAG, APP_VERSION); } catch (e) { /* 무시 */ } }
+    return { fail, total: list.length };
+  }
+  const isReady = () => { try { return localStorage.getItem(FLAG) === APP_VERSION; } catch (e) { return false; } };
+  // 인터넷 상태 표시
+  const mark = () => document.body.classList.toggle('offline', !navigator.onLine);
+  window.addEventListener('online', () => { mark(); auto(); });
+  window.addEventListener('offline', () => { mark(); toast('인터넷이 끊겼습니다. 저장해 둔 파일로 계속 사용할 수 있습니다.', 3500); });
+  // 인터넷이 될 때 한 번(버전마다) 조용히 준비
+  let running = false;
+  async function auto() {
+    if (running || !navigator.onLine || isReady() || !('caches' in window)) return;
+    running = true;
+    try { await prepare(); } catch (e) { /* 다음 기회에 */ }
+    running = false;
+  }
+  return { status, prepare, isReady, mark, auto, assets };
+})();

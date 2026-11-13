@@ -256,6 +256,7 @@ const TBM = (() => {
           <button class="btn" id="a-scan">결과 QR 스캔</button>
           <button class="btn ghost" id="a-paste">결과 코드 붙여넣기</button>
         </div>
+        <p class="offline-tip">📴 인터넷이 없습니다. 작업자 QR은 <b>작업자 폰에 데이터가 있어야</b> 열립니다. 없으면 아래 <b>이 기기에서 서명 받기</b>를 쓰세요. 결과 QR 스캔은 인터넷 없이도 됩니다.</p>
         <ol class="sig-list" id="sl"></ol>
         <h2 class="h">이 기기에서 서명 받기</h2>
         ${confirmOnceHTML([{ title: '금일 위험요인과 대책', items: t.haz.map((z, i) => `<b>${CIRC[i]} ${esc(z.h)}</b>${t.focus === i ? ' <em class="fx">★중점</em>' : ''}<br><small>대책: ${esc(z.m)}</small>`) }])}

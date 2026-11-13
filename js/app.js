@@ -110,7 +110,7 @@ function topicHTML(t, opt = {}) {
     ${t.rules && t.rules.length ? `<section class="t-sec rules"><h3>핵심 안전수칙</h3><ol>${t.rules.map((c, i) => `<li><b>예방${i + 1}</b> ${esc(c)}</li>`).join('')}</ol></section>` : ''}
     ${t.worker && t.worker.length ? `<section class="t-sec wrk"><h3>근로자는 이것만은 지켜야 합니다</h3><ol>${t.worker.map(c => `<li>${esc(c)}</li>`).join('')}</ol></section>` : ''}
     ${opt.links !== false ? `<div class="t-links">
-      ${t.video ? `<a class="btn ghost" href="${esc(t.video)}" target="_blank" rel="noopener">▶ 교육 영상</a>` : ''}
+      ${t.video ? `<a class="btn ghost" href="${esc(t.video)}" target="_blank" rel="noopener">▶ 교육 영상<small class="offline-inline"> (인터넷 필요)</small></a>` : ''}
       ${t.src && t.src.length ? `<a class="btn ghost" href="#/src/${t.id}">원본 자료</a>` : ''}
       ${opt.checklist !== false && t.checklist && t.checklist.length ? `<button class="btn ghost" data-cl="${t.id}">자율점검표</button>` : ''}
     </div>` : ''}
@@ -457,6 +457,7 @@ async function sessionView(id, stepStr) {
         <button class="btn" id="a-remote">원격 링크 보내기</button>
         <button class="btn ghost" id="a-paste">결과 코드 붙여넣기</button>
       </div>
+      <p class="offline-tip">📴 인터넷이 없습니다. 근로자 QR·원격 링크는 <b>근로자 폰에 데이터가 있어야</b> 열립니다. 없으면 아래 <b>이 기기에서 서명 받기</b>를 쓰세요. 근로자 결과 QR 스캔은 인터넷 없이도 됩니다.</p>
       <h2 class="h">서명 현황 <span id="cnt"></span></h2>
       <ol class="sig-list" id="sl"></ol>
       <h2 class="h">이 기기에서 서명 받기</h2>
@@ -989,6 +990,13 @@ async function settings() {
   const dir = canDir ? await DB.get('kv', 'dir').catch(() => null) : null;
   view().innerHTML = `<div class="bar"><h1>설정</h1></div>
     <h2 class="h">지도요원</h2><p><b>${esc(INSPECTOR)}</b> <small>(고정)</small></p>
+    <h2 class="h">와이파이 없는 곳에서 사용 (오프라인)</h2>
+    <p class="hint">앱이 쓰는 모든 파일(교육자료 그림, 평가표 자료, PDF 도구 등)을 이 기기에 저장해 두면 와이파이·인터넷이 없는 현장에서도 교육·TBM·점검·결과 만들기를 그대로 할 수 있습니다. 인터넷이 될 때 자동으로 준비되며, 아래에서 직접 확인할 수 있습니다.</p>
+    <div class="row"><span id="off-st" class="off-st">확인 중…</span><button class="btn" id="off-go">지금 준비하기</button></div>
+    <ul class="off-list">
+      <li>인터넷 없이 되는 것: 교육 진행·자료 보기, <b>이 기기에서 서명 받기(서명칸·종이 서명 촬영)</b>, 근로자 결과 QR 스캔, 사진 촬영, 결과 PDF·이미지 만들기·저장, 기기 간 <b>QR로 옮기기</b></li>
+      <li>인터넷이 필요한 것: 근로자가 <b>자기 폰으로 QR·링크</b>를 여는 것(근로자 폰에 데이터가 있으면 됨), 교육 영상 링크, 카카오톡 등으로 바로 보내기(저장해 두었다가 나중에 보내기)</li>
+    </ul>
     <h2 class="h">기기 간 정보 합치기</h2>
     <p class="hint">같은 와이파이의 스마트폰·갤럭시 탭끼리 현장·근로자·이전 서명 등 등록 정보와 기록을 합쳐 최신으로 맞춥니다.</p>
     <a class="btn" href="#/sync">⇄ 다른 기기와 합치기</a>
@@ -1012,6 +1020,21 @@ async function settings() {
   };
   $('#exp').onclick = () => exportTopics(Store.topics.filter(t => t.custom));
   $('#imp').onclick = importTopics;
+  const offDraw = async () => {
+    const s = await Offline.status().catch(() => null), el = $('#off-st'); if (!el) return;
+    el.className = 'off-st ' + (s && s.ok >= s.total ? 'ok' : 'no');
+    el.textContent = !s ? '이 브라우저는 오프라인 저장을 지원하지 않습니다.' : s.ok >= s.total ? `✔ 오프라인 준비 완료 (${s.total}개 파일)` : `준비 필요 (${s.ok}/${s.total}개 저장됨)`;
+  };
+  offDraw();
+  $('#off-go').onclick = async () => {
+    if (!navigator.onLine) { toast('지금은 인터넷이 없습니다. 와이파이·데이터가 될 때 눌러 주세요.'); return; }
+    const b = $('#off-go'); b.disabled = true;
+    try {
+      const r = await Offline.prepare((d, n) => { b.textContent = `준비 중… ${d}/${n}`; });
+      toast(r.fail ? `${r.fail}개 파일을 받지 못했습니다. 인터넷을 확인하고 다시 눌러 주세요.` : '오프라인 준비가 끝났습니다. 와이파이 없는 곳에서도 사용할 수 있습니다.', 4000);
+    } catch (e) { toast(e.message, 4000); }
+    b.disabled = false; b.textContent = '지금 준비하기'; offDraw();
+  };
   $('#relock').onclick = () => {
     if (!confirm('이 기기를 다시 잠글까요? 다음에 열 때 비밀번호 6자리를 다시 입력해야 합니다.')) return;
     Lock.forget(); route();
@@ -1129,6 +1152,7 @@ async function route() {
   try { await loadTopics(); } catch (e) { view().innerHTML = '<p class="err">교육자료를 불러오지 못했습니다. 인터넷 연결을 확인하세요.</p>'; return; }
   await Registry.backfill().catch(() => {});
   window.addEventListener('hashchange', route);
+  Offline.mark(); setTimeout(() => Offline.auto(), 4000); // 오프라인 표시, 인터넷이 될 때 모든 파일 미리 저장
   const back = Keep.resumeHash(); // 다른 앱에 다녀오는 사이 앱이 닫혔으면 보던 화면으로
   if (back) location.replace(back); else route();
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
