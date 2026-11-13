@@ -36,11 +36,11 @@ const QR = (() => {
             const r = await detector.detect(video);
             if (r.length) text = r[0].rawValue;
           } else {
-            const w = video.videoWidth, h = video.videoHeight, s = Math.min(1, 800 / Math.max(w, h));
+            const w = video.videoWidth, h = video.videoHeight, s = Math.min(1, 1280 / Math.max(w, h));
             canvas.width = w * s; canvas.height = h * s;
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const r = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+            const r = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
             if (r) text = r.data;
           }
           if (text) { onResult(text); return; }

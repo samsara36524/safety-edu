@@ -138,6 +138,37 @@ const Sync = (() => {
     const t = setTimeout(r, 3500);
     pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') { clearTimeout(t); r(); } });
   });
+  // 연결 QR을 작게: SDP에서 꼭 필요한 값(ICE 아이디·암호, 인증서 지문, 주소 후보)만 뽑고, 받는 쪽에서 다시 조립한다
+  function shrink(sdp) {
+    const get = re => (sdp.match(re) || [])[1] || '';
+    const fp = get(/a=fingerprint:sha-256 ([0-9A-F:]+)/i).split(':').map(h => parseInt(h, 16));
+    const c = [];
+    for (const line of sdp.split(/\r?\n/)) {
+      const m = line.match(/^a=candidate:\S+ 1 udp \d+ (\S+) (\d+) typ (host|srflx)/i);
+      if (!m) continue;
+      if (c.some(x => x[0] === m[1] && x[1] === +m[2])) continue;
+      c.push([m[1], +m[2], m[3][0]]); // [주소, 포트, h/s]
+    }
+    // 실제 내부 주소(IPv4)를 앞에, mDNS(.local)·외부 주소는 뒤에
+    const rank = x => (/^\d+\.\d+\.\d+\.\d+$/.test(x[0]) && x[2] === 'h' ? 0 : x[2] === 'h' ? 1 : 2);
+    c.sort((p, q) => rank(p) - rank(q));
+    return { u: get(/a=ice-ufrag:(\S+)/), p: get(/a=ice-pwd:(\S+)/), f: Codec.b64u.enc(Uint8Array.from(fp)), st: get(/a=setup:(\S+)/), c: c.slice(0, 6) };
+  }
+  function expand(o) {
+    const fp = [...Codec.b64u.dec(o.f)].map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(':');
+    const cand = o.c.map((x, i) => `a=candidate:${i + 1} 1 udp ${x[2] === 'h' ? 2122260223 - i : 1686052607 - i} ${x[0]} ${x[1]} typ ${x[2] === 'h' ? 'host' : 'srflx'}${x[2] === 's' ? ' raddr 0.0.0.0 rport 0' : ''} generation 0`);
+    return ['v=0', 'o=- 4611731400430051336 2 IN IP4 127.0.0.1', 's=-', 't=0 0', 'a=group:BUNDLE 0', 'a=extmap-allow-mixed', 'a=msid-semantic: WMS',
+      'm=application 9 UDP/DTLS/SCTP webrtc-datachannel', 'c=IN IP4 0.0.0.0', ...cand,
+      `a=ice-ufrag:${o.u}`, `a=ice-pwd:${o.p}`, 'a=ice-options:trickle', `a=fingerprint:sha-256 ${fp}`, `a=setup:${o.st || 'actpass'}`,
+      'a=mid:0', 'a=sctp-port:5000', 'a=max-message-size:262144', ''].join('\r\n');
+  }
+  // 크롬은 카메라 권한이 있을 때만 실제 내부 주소를 연결 후보로 쓴다 → QR을 만드는 동안 카메라를 잠깐 켠다
+  async function revealIP() {
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      return () => s.getTracks().forEach(t => t.stop());
+    } catch (e) { return () => {}; }
+  }
   // 두 기기가 서로 내용을 보내고, 받은 내용을 합친다
   function run(pc, ch, ui, withRecords) {
     let parts = [], total = 0, got = 0, myDone = false, peerStats = null, myStats = null, finished = false, started = false;
@@ -193,7 +224,7 @@ const Sync = (() => {
       <section class="sy-box">
         <h2 class="h">파일로 주고받기 <small>(연결이 안 될 때)</small></h2>
         <p class="hint">[내 정보 파일 보내기]로 만든 파일을 퀵쉐어·카카오톡 등으로 다른 기기에 보내고, 그 기기에서 [받은 파일 합치기]를 누르세요. 양쪽을 맞추려면 반대 방향으로도 한 번 더 합니다.</p>
-        <div class="row"><button class="btn" id="sy-export">내 정보 파일 보내기</button><button class="btn" id="sy-import">받은 파일 합치기</button></div>
+        <div class="row"><button class="btn" id="sy-export" disabled>파일 준비 중…</button><button class="btn" id="sy-import">받은 파일 합치기</button></div>
         <p class="hint" id="sy-fmsg"></p>
       </section>`;
     const area = $('#sy-area');
@@ -220,12 +251,14 @@ const Sync = (() => {
     $('#sy-host').onclick = async () => {
       if (!('RTCPeerConnection' in window)) { ui.fail('이 브라우저는 기기 간 바로 연결을 지원하지 않습니다. 파일로 주고받으세요.'); return; }
       area.innerHTML = '<p class="hint">QR을 만드는 중…</p>';
+      const stopCam = await revealIP();
       pc = newPC();
       const ch = pc.createDataChannel('sync', { ordered: true });
       run(pc, ch, ui, rec());
       await pc.setLocalDescription(await pc.createOffer());
       await gathered(pc);
-      const code = await Codec.pack({ y: 'so', s: pc.localDescription.sdp });
+      stopCam();
+      const code = await Codec.pack(Object.assign({ y: 'so' }, shrink(pc.localDescription.sdp)));
       area.innerHTML = `<p class="hint">다른 기기에서 <b>[② QR 찍어 연결]</b>로 이 QR을 찍으세요.</p><div class="qrbox">${QR.svg(code)}</div>
         <div class="row center"><button class="btn primary" id="sy-ans">답장 QR 찍기</button></div>`;
       $('#sy-ans').onclick = async () => {
@@ -233,7 +266,7 @@ const Sync = (() => {
         let o; try { o = await Codec.unpack(text); } catch (e) { toast('QR을 읽지 못했습니다.'); return; }
         if (!o || o.y !== 'sa') { toast('상대 기기의 답장 QR이 아닙니다.'); return; }
         area.innerHTML = progressHTML;
-        await pc.setRemoteDescription({ type: 'answer', sdp: o.s });
+        try { await pc.setRemoteDescription({ type: 'answer', sdp: o.s || expand(o) }); } catch (e) { ui.fail('연결 정보를 읽지 못했습니다: ' + e.message); return; }
         setTimeout(() => { if (pc.connectionState !== 'connected' && $('#sy-st', area)) ui.fail('연결하지 못했습니다. 두 기기가 같은 와이파이에 있는지 확인하거나, 아래 [파일로 주고받기]를 이용하세요.'); }, 25000);
       };
     };
@@ -243,25 +276,38 @@ const Sync = (() => {
       let o; try { o = await Codec.unpack(text); } catch (e) { toast('QR을 읽지 못했습니다.'); return; }
       if (!o || o.y !== 'so') { toast('상대 기기의 연결 QR이 아닙니다.'); return; }
       area.innerHTML = '<p class="hint">답장 QR을 만드는 중…</p>';
+      const stopCam = await revealIP();
       pc = newPC();
       pc.ondatachannel = e => { area.innerHTML = progressHTML; run(pc, e.channel, ui, rec()); if (e.channel.readyState === 'open') e.channel.onopen(); };
-      await pc.setRemoteDescription({ type: 'offer', sdp: o.s });
+      try { await pc.setRemoteDescription({ type: 'offer', sdp: o.s || expand(o) }); } catch (e) { stopCam(); ui.fail('연결 정보를 읽지 못했습니다: ' + e.message); return; }
       await pc.setLocalDescription(await pc.createAnswer());
       await gathered(pc);
-      const code = await Codec.pack({ y: 'sa', s: pc.localDescription.sdp });
+      stopCam();
+      const code = await Codec.pack(Object.assign({ y: 'sa' }, shrink(pc.localDescription.sdp)));
       area.innerHTML = `<p class="hint">처음 기기에서 <b>[답장 QR 찍기]</b>로 이 QR을 찍으세요. 연결되면 자동으로 합칩니다.</p><div class="qrbox">${QR.svg(code)}</div>`;
     };
     // 파일로
-    $('#sy-export').onclick = async () => {
+    // 공유 창은 버튼을 누른 직후에만 열 수 있어 파일을 미리 만들어 둔다 (크롬이 공유를 허용하는 텍스트 파일 .txt)
+    let expFile = null;
+    const prep = async () => {
+      const eb = $('#sy-export'); if (!eb) return;
+      eb.disabled = true; eb.textContent = '파일 준비 중…'; expFile = null;
       const b = await bundle(rec());
       const d = new Date(), p = n => String(n).padStart(2, '0');
-      const name = `안전지도_정보_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}.json`;
-      const file = new File([JSON.stringify(b)], name, { type: 'application/json' });
-      $('#sy-fmsg').textContent = `파일을 만들었습니다 (${(file.size / 1048576).toFixed(1)}MB). 공유 창에서 보낼 곳을 고르세요.`;
-      shareFiles([file], name);
+      const name = `안전지도_정보_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}.txt`;
+      expFile = new File([JSON.stringify(b)], name, { type: 'text/plain' });
+      if (!$('#sy-export')) return;
+      eb.disabled = false; eb.textContent = `내 정보 파일 보내기 (${expFile.size > 1048576 ? (expFile.size / 1048576).toFixed(1) + 'MB' : Math.ceil(expFile.size / 1024) + 'KB'})`;
+    };
+    $('#sy-rec').addEventListener('change', prep);
+    prep();
+    $('#sy-export').onclick = () => {
+      if (!expFile) { toast('파일을 준비하고 있습니다. 잠시 후 다시 누르세요.'); return; }
+      $('#sy-fmsg').textContent = '공유 창에서 퀵쉐어·카카오톡 등 보낼 곳을 고르세요.';
+      shareFiles([expFile], expFile.name);
     };
     $('#sy-import').onclick = async () => {
-      const f = await pickFile('.json,application/json'); if (!f) return;
+      const f = await pickFile('.txt,.json,text/plain,application/json'); if (!f) return;
       try {
         const st = await merge(JSON.parse(await f.text()));
         $('#sy-fmsg').textContent = '✔ 합쳤습니다: ' + statText(st);
@@ -270,5 +316,5 @@ const Sync = (() => {
     };
   }
 
-  return { page, merge, bundle, statText, _run: run, _newPC: newPC };
+  return { page, merge, bundle, statText, _run: run, _newPC: newPC, _shrink: shrink, _expand: expand };
 })();

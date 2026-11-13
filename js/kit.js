@@ -137,7 +137,7 @@ async function shareFiles(files, title) {
       try { await navigator.share({ files, title, text: title }); return true; }
       catch (e) {
         if (e.name === 'AbortError') return false; // 사용자가 닫음
-        if (e.name === 'NotAllowedError') { toast('공유 창을 열지 못했습니다. 버튼을 한 번 더 눌러 주세요.', 3500); return false; }
+        // NotAllowedError 등: 아래에서 다운로드로 대신
       }
     }
   }
