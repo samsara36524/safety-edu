@@ -242,7 +242,7 @@ const Keep = (() => {
   }
   // ----- 임시저장: 작성 화면의 입력 내용을 기한 없이 보관 → 다음에 그 화면을 열면 이어서 -----
   const D = 'drafts', DMAX = 30;
-  const EDIT = /^#\/(s|t|m|l|z|h)\/[^/]+/; // 안전교육·TBM·장비측정·산안법·중처법·고위험요인 작성 화면
+  const EDIT = /^#\/(s|t|m|l|z|h|v)\/[^/]+/; // 안전교육·TBM·장비측정·산안법·중처법·고위험요인 작성 화면
   const drafts = () => { try { return JSON.parse(localStorage.getItem(D) || '{}'); } catch (e) { return {}; } };
   function putDraft(st) {
     const all = drafts(); all[st.h] = st;

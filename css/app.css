@@ -714,3 +714,34 @@ body.offline::after { content: '📴 오프라인 · 저장된 파일로 사용 
 .off-st.no { color: #e67700; }
 .off-list { margin: 8px 0 14px; padding-left: 20px; font-size: 14px; color: #444; }
 .off-list li { margin: 4px 0; }
+/* 원격서명 */
+.c-rsig { background: #1971c2; }
+.rs-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin: 6px 0 10px; }
+.rs-photos figure { margin: 0; position: relative; text-align: center; }
+.rs-photos img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); background: #f1f3f5; cursor: pointer; }
+.rs-photos figcaption { font-size: 12px; color: var(--muted); }
+.rs-photos .pdel { position: absolute; top: -6px; right: -6px; }
+.rs-l { display: flex; flex-direction: column; gap: 4px; font-weight: 600; margin: 6px 0; }
+.rs-l input { font-size: 16px; padding: 8px 10px; }
+.rs-send { background: #fff; border: 1px solid var(--primary-2); border-radius: var(--radius); padding: 12px; margin: 12px 0; text-align: center; }
+.rs-sigbox { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+.rs-sigbox img { max-width: 70%; height: 90px; object-fit: contain; background: #fff; border: 1px solid var(--line); border-radius: 8px; }
+.rs-sign h1 { margin: 4px 0; }
+.rs-label { display: inline-block; background: #e7f5ff; color: #1864ab; font-weight: 800; padding: 4px 12px; border-radius: 99px; margin: 0 0 8px; }
+.rs-t { width: 100%; border-collapse: collapse; background: #fff; margin: 6px 0; }
+.rs-t th, .rs-t td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
+.rs-t th { width: 30%; background: #f1f3f5; }
+.rs-c { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; line-height: 1.6; }
+.rs-wrap { margin: 10px 0; }
+.rs-pad { aspect-ratio: 5 / 2.3 !important; border-width: 3px; }
+@media (orientation: portrait) { .rs-pad { aspect-ratio: 25 / 16 !important; } }
+.rs-ok { background: #e8f5ec; border: 1px solid #b2dfbd; border-radius: var(--radius); padding: 12px; margin: 12px 0; text-align: center; }
+.rs-ok img { width: 100%; max-width: 420px; background: #fff; border: 1px solid var(--line); border-radius: 8px; }
+.rs-page .rs-info { font-size: 13px; }
+.rs-memo { height: 80px; vertical-align: top !important; }
+.rs-pgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: none; }
+.rs-pc { height: 300px; border: 1px solid #555; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+.rs-pc img { display: block; }
+.rs-pc span { position: absolute; bottom: 3px; font-size: 11px; color: #555; }
+.rs-sg { flex: 1; min-height: 150px; border: 1px solid #555; display: flex; align-items: center; justify-content: center; padding: 4px; }
+.rs-sg img { display: block; }
