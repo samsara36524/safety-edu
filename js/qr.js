@@ -8,7 +8,8 @@ const QR = (() => {
   }
 
   // 카메라 스캔: 결과 문자열을 resolve. stop() 으로 중단.
-  function scan(video, onResult) {
+  // many: true 이면 멈추지 않고 계속 읽어 매번 onResult 호출 (여러 장 QR 받기)
+  function scan(video, onResult, many = false) {
     let stream, stopped = false, detector = null;
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -43,10 +44,10 @@ const QR = (() => {
             const r = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
             if (r) text = r.data;
           }
-          if (text) { onResult(text); return; }
+          if (text) { onResult(text); if (!many) return; }
         }
       } catch (e) { /* 다음 프레임에서 재시도 */ }
-      setTimeout(tick, 150);
+      setTimeout(tick, many ? 60 : 150);
     }
     function stop() {
       stopped = true;

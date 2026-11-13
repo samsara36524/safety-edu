@@ -699,3 +699,8 @@ body.locked .tmpsave, body.worker .tmpsave { display: none; }
 .sy-done p { margin: 4px 0; }
 #ps-list li { display: flex; gap: 6px; align-items: stretch; }
 #ps-list .pdel { position: static; width: 36px; height: auto; border-radius: 10px; }
+.sy-main { border-color: var(--primary-2); }
+.qtx-box { display: flex; flex-direction: column; align-items: center; gap: 4px; background: #fff; padding: 8px; border-radius: 10px; }
+.qtx-qr { width: min(88vw, 440px); }
+.qtx-qr svg { width: 100%; height: auto; display: block; }
+.qtx-no { font-weight: 700; font-size: 15px; }
