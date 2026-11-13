@@ -1077,7 +1077,7 @@ function help() {
   <h2>원격서명</h2><ol>
     <li>홈 → <b>원격서명</b> → <b>＋ 서명 요청</b> → 현장·점검일·점검내용을 쓰고 점검사진을 4장까지 넣습니다.</li>
     <li>이 현장에 등록된 인원(전화번호 있는 사람)을 누르거나 이름·번호를 넣고 <b>📱 문자로 서명 링크 보내기</b>를 누르면 문자 앱이 담당자 번호·내용이 채워진 채 열립니다.</li>
-    <li>담당자는 링크에서 비밀번호를 넣고 내용·사진을 확인한 뒤 넓은 서명칸에 서명해 <b>서명 제출</b> → 메일 앱으로 지정한 이메일(초기값 adlibservice@gmail.com)에 <b>기술지도보고서 첨부용 서명</b> 이미지를 보냅니다.</li>
+    <li>담당자는 링크에서 <b>본인 휴대폰 번호 끝 4자리</b>를 넣고 내용·사진을 확인한 뒤 넓은 서명칸에 서명해 <b>서명 제출</b> → 메일 앱으로 지정한 이메일(초기값 adlibservice@gmail.com)에 <b>기술지도보고서 첨부용 서명</b> 이미지를 보냅니다.</li>
     <li>받은 서명 이미지를 <b>받은 서명 이미지 넣기</b>로 넣으면 점검내용·사진·서명이 담긴 확인서를 만들 수 있습니다.</li></ol>
   <h2>고위험요인 평가</h2><ol>
     <li>홈 → <b>고위험요인 평가</b> → <b>＋ 평가 시작</b> → 현장명·평가일·현장소장 이름을 넣습니다.</li>
@@ -1131,8 +1131,14 @@ const routes = [
 ];
 // 비밀번호가 맞아야 화면을 연다. 근로자 링크는 링크를 만든 지도요원의 비밀번호를 쓴다.
 async function needPin(h) {
-  const wm = h.match(/^#\/(?:w|rs)\/(.+)$/);
-  if (wm) { try { return (await Codec.unpack(wm[1])).k || Lock.DEFAULT; } catch (e) { return Lock.DEFAULT; } }
+  const wm = h.match(/^#\/(w|rs)\/(.+)$/);
+  if (wm) {
+    try {
+      const o = await Codec.unpack(wm[2]);
+      if (wm[1] === 'rs' && o.h4) return null; // 원격서명: 담당자 휴대폰 끝 4자리로 확인 (서명 화면에서)
+      return o.k || Lock.DEFAULT;
+    } catch (e) { return Lock.DEFAULT; }
+  }
   return Lock.current();
 }
 async function route() {
@@ -1140,7 +1146,7 @@ async function route() {
   const ext = h.startsWith('#/w/') || h.startsWith('#/rs/'); // 근로자·서명자 폰에서 여는 링크
   document.body.classList.toggle('worker', ext);
   const pin = await needPin(h);
-  if (!Lock.isOpen(pin)) { Lock.gate(view(), pin, route, !ext); return; } // 지도요원 화면은 한 번 입력하면 기기를 기억
+  if (pin !== null && !Lock.isOpen(pin)) { Lock.gate(view(), pin, route, !ext); return; } // 지도요원 화면은 한 번 입력하면 기기를 기억
   document.body.classList.remove('locked');
   $$('.nav a').forEach(a => a.classList.toggle('on', h === a.getAttribute('href') || (a.getAttribute('href') !== '#/' && h.startsWith(a.getAttribute('href')))));
   for (const [re, fn] of routes) {

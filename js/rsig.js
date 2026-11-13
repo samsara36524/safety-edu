@@ -14,6 +14,11 @@ const Rsig = (() => {
   const lines = s => esc(s || '').replace(/\n/g, '<br>');
   const emailOf = async () => (await DB.get('kv', 'rsigEmail').catch(() => null)) || EMAIL0;
   const telNum = t => String(t || '').replace(/[^\d+]/g, '');
+  // 담당자 휴대폰 끝 4자리 확인값: 원래 숫자는 링크에 넣지 않고 바꾼 값(해시)만 담는다
+  async function last4Hash(id, four) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`safety-edu-rs:${id}:${four}`));
+    return [...new Uint8Array(buf)].slice(0, 12).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
 
   // ---------- 목록 ----------
   function card(t) {
@@ -56,7 +61,8 @@ const Rsig = (() => {
   });
   async function linkOf(t) {
     const p = (await Promise.all((t.photos || []).map(thumb))).filter(Boolean);
-    const code = await Codec.pack({ v: 1, y: 'rs', i: t.id, n: t.site, d: t.date, c: t.memo, p, nm: t.to.name, e: t.email, k: await Lock.current() });
+    const four = telNum(t.to.tel).slice(-4);
+    const code = await Codec.pack({ v: 1, y: 'rs', i: t.id, n: t.site, d: t.date, c: t.memo, p, nm: t.to.name, e: t.email, h4: await last4Hash(t.id, four) });
     return `${APP_URL}#/rs/${code}`;
   }
 
@@ -130,11 +136,12 @@ const Rsig = (() => {
       if (!t.site) { toast('현장명을 입력하세요.'); return false; }
       if (!t.memo.trim() && !t.photos.length) { toast('점검내용이나 점검사진을 넣으세요.'); return false; }
       if (!t.to.name) { toast('서명할 담당자 이름을 넣으세요.'); tn.focus(); return false; }
+      if (telNum(t.to.tel).length < 4) { toast('담당자 휴대폰 번호를 넣으세요. (링크를 열 때 끝 4자리로 확인합니다)'); tt.focus(); return false; }
       return true;
     };
     let link = '';
     const prep = async () => { link = await linkOf(t); return link; };
-    const msgText = () => `[원격서명 요청] ${t.site} ${fmtDay(t.date)} 점검 결과입니다. 아래 링크에서 내용과 사진을 확인하고 서명해 주세요. (${LABEL}, 비밀번호는 지도요원에게 문의)\n`;
+    const msgText = () => `[원격서명 요청] ${t.site} ${fmtDay(t.date)} 점검 결과입니다. 아래 링크에서 내용과 사진을 확인하고 서명해 주세요. (${LABEL})\n링크를 열고 본인 휴대폰 번호 끝 4자리를 넣으면 서명 화면이 열립니다.\n`;
     const sent = async how => { t.sentAt = Date.now(); await save(t); $('#lmsg').textContent = `${how} 서명 요청을 보냈습니다. 담당자가 제출하면 ${t.email}로 서명 이미지가 옵니다.`; };
     $('#sms').onclick = async () => {
       syncTo(); if (!check()) return;
@@ -208,6 +215,33 @@ const Rsig = (() => {
     let p;
     try { p = await Codec.unpack(code); } catch (e) { view().innerHTML = '<p class="err">링크가 올바르지 않습니다. 받은 문자의 링크 전체를 눌러 주세요.</p>'; return; }
     if (!p || p.y !== 'rs') { view().innerHTML = '<p class="err">원격서명 링크가 아닙니다.</p>'; return; }
+    // 휴대폰 끝 4자리 확인 (한 번 맞히면 이 링크는 브라우저를 닫을 때까지 다시 묻지 않음)
+    const OKK = 'rsok:' + p.i;
+    let passed = false; try { passed = sessionStorage.getItem(OKK) === '1'; } catch (e) { passed = false; }
+    if (p.h4 && !passed) {
+      view().innerHTML = `<section class="lockbox rs-gate">
+        <img src="icons/app-192.png" alt="">
+        <h1>원격서명</h1>
+        <p class="lock-org">${esc(p.n || '')} · ${LABEL}</p>
+        <p><b>${esc(p.nm || '담당자')}</b> 님, 본인 <b>휴대폰 번호 끝 4자리</b>를 입력하세요.</p>
+        <input id="rs4" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="숫자 4자리" aria-label="휴대폰 번호 끝 4자리">
+        <p class="hint" id="rs4msg">예: 010-1234-<b>5678</b> → 5678</p>
+      </section>`;
+      const inp = $('#rs4'), msg = $('#rs4msg');
+      setTimeout(() => inp.focus(), 50);
+      inp.oninput = async () => {
+        inp.value = inp.value.replace(/\D/g, '').slice(0, 4);
+        if (inp.value.length < 4) return;
+        if (await last4Hash(p.i, inp.value) === p.h4) {
+          try { sessionStorage.setItem(OKK, '1'); } catch (e) { /* 저장 불가 */ }
+          signer(code);
+        } else {
+          msg.textContent = '번호가 맞지 않습니다. 문자를 받은 휴대폰 번호의 끝 4자리를 입력하세요.';
+          inp.value = ''; inp.classList.remove('shake'); void inp.offsetWidth; inp.classList.add('shake');
+        }
+      };
+      return;
+    }
     view().innerHTML = `<section class="rs-sign">
       <h1>원격서명</h1>
       <p class="rs-label">✍ ${LABEL}</p>

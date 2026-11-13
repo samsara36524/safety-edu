@@ -745,3 +745,5 @@ body.offline::after { content: '📴 오프라인 · 저장된 파일로 사용 
 .rs-pc span { position: absolute; bottom: 3px; font-size: 11px; color: #555; }
 .rs-sg { flex: 1; min-height: 150px; border: 1px solid #555; display: flex; align-items: center; justify-content: center; padding: 4px; }
 .rs-sg img { display: block; }
+.rs-gate #rs4 { font-size: 34px; letter-spacing: 14px; text-align: center; width: 190px; padding: 10px; border-radius: 12px; border: 2px solid var(--line); }
+.rs-gate #rs4::placeholder { font-size: 18px; letter-spacing: 2px; color: #adb5bd; }
