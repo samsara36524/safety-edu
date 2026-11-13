@@ -31,6 +31,7 @@ const Registry = (() => {
       const v = String((n && n.name) || n || '').trim();
       if (!v) continue;
       st.people[v] = Math.max(st.people[v] || 0, when);
+      if (st.pdel) delete st.pdel[v];
       const tel = fmtTel(n && n.tel);
       if (tel) (st.tels = st.tels || {})[v] = tel;
     }
@@ -54,7 +55,7 @@ const Registry = (() => {
   }
   async function removePerson(siteName, name) {
     const r = await load(), st = r.sites[norm(siteName)];
-    if (st) { delete st.people[name]; if (st.tels) delete st.tels[name]; await save(); }
+    if (st) { delete st.people[name]; if (st.tels) delete st.tels[name]; (st.pdel = st.pdel || {})[name] = Date.now(); await save(); }
   }
   // 전화번호 모양 맞추기: 01012345678 → 010-1234-5678
   function fmtTel(s) {
@@ -104,9 +105,12 @@ const Registry = (() => {
     await save();
     return st;
   }
+  // 삭제한 현장은 기록(del)으로 남겨 다른 기기와 합칠 때도 지워지게 한다
   async function removeSite(siteName) {
-    const r = await load(); delete r.sites[norm(siteName)]; await save();
+    const r = await load(), k = norm(siteName);
+    delete r.sites[k]; (r.del = r.del || {})[k] = Date.now(); await save();
   }
+  function reload() { cache = null; } // 다른 기기 정보를 합친 뒤 다시 읽기
   async function sites() {
     const r = await load();
     return Object.values(r.sites).sort((a, b) => b.updated - a.updated);
@@ -153,7 +157,7 @@ const Registry = (() => {
     r.bf = true;
     await save();
   }
-  return { addSite, saveSite, addPeople, savePerson, parsePeople, fmtTel, tels, removePerson, removeSite, sites, site, people, backfill, norm, addSig, sigs, removeSig };
+  return { reload, addSite, saveSite, addPeople, savePerson, parsePeople, fmtTel, tels, removePerson, removeSite, sites, site, people, backfill, norm, addSig, sigs, removeSig };
 })();
 
 const Search = (() => {

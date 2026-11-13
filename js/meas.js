@@ -202,12 +202,7 @@ const Meas = (() => {
           </div>`;
         $('#sv-pdf').onclick = () => downloadBlob(res.pdf, name + '.pdf');
         $('#sv-jpg').onclick = async () => downloadBlob(await dataUrlToBlob(res.image), name + '.jpg');
-        $('#sv-share').onclick = async () => {
-          const file = new File([res.pdf], name + '.pdf', { type: 'application/pdf' });
-          if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            try { await navigator.share({ files: [file], title: name }); } catch (e) { if (e.name !== 'AbortError') toast('공유 실패: ' + e.message); }
-          } else toast('이 브라우저는 파일 공유를 지원하지 않습니다. PDF 저장을 이용하세요.');
-        };
+        $('#sv-share').onclick = () => shareFiles([new File([res.pdf], name + '.pdf', { type: 'application/pdf' })], name);
         $('#out').scrollIntoView({ behavior: 'smooth' });
         btn.textContent = '다시 만들기';
       } catch (e) {

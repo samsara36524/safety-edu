@@ -581,7 +581,8 @@ async function sessionView(id, stepStr) {
           <div class="save-actions">
             ${canDir ? `<button class="btn primary" id="sv-dir">지정 폴더에 저장${dir ? ` <small>(${esc(dir.name)})</small>` : ''}</button>${dir ? '<button class="btn ghost" id="sv-dir2">다른 폴더 선택</button>' : ''}` : ''}
             <button class="btn ${canDir ? '' : 'primary'}" id="sv-zip">ZIP으로 저장 (다운로드 폴더)</button>
-            <button class="btn" id="sv-share">공유 (드라이브·카톡 등)</button>
+            <button class="btn" id="sv-pdfshare">PDF 공유 (카톡·메일 등)</button>
+            <button class="btn" id="sv-share">전체 파일 공유 (PDF·쪽 이미지·사진)</button>
             <button class="btn ghost" id="sv-pdf">PDF만 저장</button>
           </div>
           ${canDir ? '' : '<p class="hint">이 기기의 브라우저는 폴더 지정 저장을 지원하지 않습니다. ZIP은 다운로드 폴더에 저장되며, [공유]로 구글드라이브·원드라이브의 원하는 폴더에 바로 올릴 수 있습니다.</p>'}`;
@@ -594,12 +595,9 @@ async function sessionView(id, stepStr) {
           files.forEach(f => d.file(f.name, f.blob));
           downloadBlob(await zip.generateAsync({ type: 'blob' }), folder + '.zip');
         };
-        $('#sv-share').onclick = async () => {
-          const fl = files.map(f => new File([f.blob], `${folder}_${f.name}`, { type: f.blob.type }));
-          if (navigator.canShare && navigator.canShare({ files: fl })) {
-            try { await navigator.share({ files: fl, title: folder }); } catch (e) { if (e.name !== 'AbortError') toast('공유 실패: ' + e.message); }
-          } else toast('이 브라우저는 파일 공유를 지원하지 않습니다. ZIP으로 저장하세요.');
-        };
+        const allFiles = files.map(f => new File([f.blob], `${folder}_${f.name}`, { type: f.blob.type }));
+        $('#sv-share').onclick = () => shareFiles(allFiles, folder);
+        $('#sv-pdfshare').onclick = () => shareFiles([allFiles[0]], folder);
         $('#sv-pdf').onclick = () => downloadBlob(res.pdf, folder + '.pdf');
         btn.textContent = '다시 만들기';
       } catch (e) {
@@ -733,9 +731,14 @@ function pickSite(onPick) {
   const q = $('#ps-q', m.el), ul = $('#ps-list', m.el);
   const draw = async () => {
     const list = (await Registry.sites()).filter(st => Search.match(st.name, q.value) || Search.match(st.client || '', q.value));
-    ul.innerHTML = list.length ? list.map((st, i) => `<li><button type="button" class="pp-use" data-i="${i}"><b>${esc(st.name)}</b><br><small>${esc(siteSub(st))}</small></button></li>`).join('')
+    ul.innerHTML = list.length ? list.map((st, i) => `<li><button type="button" class="pp-use" data-i="${i}"><b>${esc(st.name)}</b><br><small>${esc(siteSub(st))}</small></button><button type="button" class="pdel" data-sdel="${i}" title="현장 삭제">✕</button></li>`).join('')
       : `<li class="hint">${q.value ? '검색 결과가 없습니다.' : '등록된 현장이 없습니다. 오른쪽 위 ＋ 새 현장 등록을 누르세요.'}</li>`;
     $$('[data-i]', ul).forEach(b => b.onclick = () => { m.el.remove(); onPick(list[+b.dataset.i]); });
+    $$('[data-sdel]', ul).forEach(b => b.onclick = async () => {
+      const st = list[+b.dataset.sdel];
+      if (!confirm(`'${st.name}' 현장과 등록 근로자를 삭제할까요? (교육·점검 기록은 남습니다)`)) return;
+      await Registry.removeSite(st.name); toast('현장을 삭제했습니다.'); draw();
+    });
   };
   q.oninput = draw;
   $('#ps-new', m.el).onclick = async () => { m.el.remove(); const st = await siteForm(null, q.value.trim()); if (st) onPick(st); };
@@ -910,7 +913,7 @@ function pastePeople(siteName, done) {
   setTimeout(() => ta.focus(), 50);
 }
 async function sitesView() {
-  view().innerHTML = `<div class="bar"><h1>현장·근로자</h1><button class="btn primary" id="addsite">＋ 현장 등록</button></div>
+  view().innerHTML = `<div class="bar"><h1>현장·근로자</h1><div class="row"><a class="btn ghost" href="#/sync">⇄ 다른 기기와 합치기</a><button class="btn primary" id="addsite">＋ 현장 등록</button></div></div>
     <p class="hint">관리 중인 현장과 현장별 인원(이름·전화번호)을 등록해 두면 안전교육·TBM·장비측정에서 바로 고를 수 있습니다. 교육받은 근로자는 이름이 자동으로 등록됩니다.</p>
     <input id="q" type="search" placeholder="현장명·시공사, 이름 또는 전화번호 검색 (초성 검색 가능)">
     <div id="slist" class="site-list"></div>`;
@@ -986,6 +989,9 @@ async function settings() {
   const dir = canDir ? await DB.get('kv', 'dir').catch(() => null) : null;
   view().innerHTML = `<div class="bar"><h1>설정</h1></div>
     <h2 class="h">지도요원</h2><p><b>${esc(INSPECTOR)}</b> <small>(고정)</small></p>
+    <h2 class="h">기기 간 정보 합치기</h2>
+    <p class="hint">같은 와이파이의 스마트폰·갤럭시 탭끼리 현장·근로자·이전 서명 등 등록 정보와 기록을 합쳐 최신으로 맞춥니다.</p>
+    <a class="btn" href="#/sync">⇄ 다른 기기와 합치기</a>
     <h2 class="h">비밀번호</h2>
     <p class="hint">앱과 근로자 링크를 열 때 입력하는 숫자 6자리입니다. 이 기기는 처음 한 번 입력하면 다음부터 바로 열립니다. 바꾸면 이후 보내는 QR·링크부터 새 비밀번호가 적용되고, 이미 보낸 링크는 그때의 비밀번호를 씁니다.</p>
     <div class="row"><button class="btn ghost" id="relock">이 기기 다시 잠그기</button><span class="hint">${Lock.trusted() ? '지금은 이 기기를 기억해 바로 열립니다.' : ''}</span></div>
@@ -1087,6 +1093,7 @@ const routes = [
   [/^#\/edit\/(.+)$/, editor], [/^#\/new(?:~(.+))?$/, newSession], [/^#\/sites$/, sitesView], [/^#\/s\/([^/]+)(?:\/(\d))?$/, sessionView],
   [/^#\/records$/, records], [/^#\/settings$/, settings], [/^#\/help$/, help],
   [/^#\/w\/(.+)$/, workerView], [/^#\/r\/(.+)$/, importView],
+  [/^#\/sync$/, Sync.page],
   [/^#\/sif$/, Sif.list], [/^#\/sif\/new(?:~(.+))?$/, Sif.create], [/^#\/h\/([^/]+)$/, Sif.view],
   [/^#\/sapa$/, Sapa.list], [/^#\/sapa\/new(?:~(.+))?$/, Sapa.create], [/^#\/z\/([^/]+)$/, Sapa.view],
   [/^#\/law$/, Law.list], [/^#\/law\/new(?:~(.+))?$/, Law.create], [/^#\/l\/([^/]+)$/, Law.view],

@@ -126,6 +126,27 @@ function signSlots(box, o) {
 }
 // 근로자 이름 표시 (목록·결과지에는 이름 글자만)
 function nameCell(w) { return w ? esc(w.name) : ''; }
+// ---------- 파일 공유 (결과지 전달) ----------
+// 휴대폰 공유 창은 버튼을 누른 직후에만 열 수 있어, 파일은 미리 만들어 두고 누르면 바로 연다.
+// 공유를 지원하지 않거나 실패하면 다운로드로 대신한다.
+async function shareFiles(files, title) {
+  if (navigator.canShare && navigator.share) {
+    let ok = false;
+    try { ok = navigator.canShare({ files }); } catch (e) { ok = false; }
+    if (ok) {
+      try { await navigator.share({ files, title, text: title }); return true; }
+      catch (e) {
+        if (e.name === 'AbortError') return false; // 사용자가 닫음
+        if (e.name === 'NotAllowedError') { toast('공유 창을 열지 못했습니다. 버튼을 한 번 더 눌러 주세요.', 3500); return false; }
+      }
+    }
+  }
+  files.forEach(f => downloadBlob(f, f.name));
+  toast(`이 기기는 바로 공유가 안 되어 ${files.length > 1 ? files.length + '개 파일을 ' : ''}다운로드했습니다. 카카오톡 등에서 [파일]로 보내세요.`, 5000);
+  return false;
+}
+const toFile = async (dataUrl, name) => new File([await dataUrlToBlob(dataUrl)], name, { type: 'image/jpeg' });
+
 // 서명칸 위에 한 번만 보여 주는 확인사항
 function confirmOnceHTML(groups) {
   return `<div class="confirm-once">${groups.map(g => `<div class="co-g"><b>${esc(g.title)}</b><ol>${g.items.map(it => `<li>${it}</li>`).join('')}</ol></div>`).join('')}

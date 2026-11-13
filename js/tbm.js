@@ -402,12 +402,7 @@ const TBM = (() => {
             <p class="hint">시공사는 PDF를 출력해 결재칸(관리감독자·안전보건관리책임자)에 수기로 결재합니다.</p>`;
           $('#sv-pdf').onclick = () => downloadBlob(res.pdf, name + '.pdf');
           $('#sv-jpg').onclick = async () => { for (let i = 0; i < res.images.length; i++) downloadBlob(await dataUrlToBlob(res.images[i]), res.images.length > 1 ? `${name}_${i + 1}쪽.jpg` : name + '.jpg'); };
-          $('#sv-share').onclick = async () => {
-            const file = new File([res.pdf], name + '.pdf', { type: 'application/pdf' });
-            if (navigator.canShare && navigator.canShare({ files: [file] })) {
-              try { await navigator.share({ files: [file], title: name }); } catch (e) { if (e.name !== 'AbortError') toast('공유 실패: ' + e.message); }
-            } else toast('이 브라우저는 파일 공유를 지원하지 않습니다. PDF 저장을 이용하세요.');
-          };
+          $('#sv-share').onclick = () => shareFiles([new File([res.pdf], name + '.pdf', { type: 'application/pdf' })], name);
           btn.textContent = '다시 만들기';
         } catch (e) {
           console.error(e); toast('PDF를 만들지 못했습니다: ' + e.message, 5000); btn.textContent = 'TBM 일지 PDF 만들기';

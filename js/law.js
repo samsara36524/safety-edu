@@ -279,16 +279,14 @@ const Law = (() => {
             ${res.pages.map((_, i) => `<button class="btn ghost" data-jpg="${i}">${i + 1}쪽 이미지(JPG) 저장</button>`).join('')}
             <button class="btn ghost" id="sv-imgshare">이미지 ${N}장 공유</button>
           </div>`;
-        const imgFile = async i => new File([await dataUrlToBlob(res.pages[i])], `${name}_${i + 1}쪽.jpg`, { type: 'image/jpeg' });
+        const imgFiles = await Promise.all(res.pages.map((p, i) => toFile(p, `${name}_${i + 1}쪽.jpg`))); // 공유 버튼에서 바로 쓰도록 미리
+        const pdfFile = new File([res.pdf], name + '.pdf', { type: 'application/pdf' });
+        const imgFile = async i => imgFiles[i];
         $('#sv-pdf').onclick = () => downloadBlob(res.pdf, name + '.pdf');
         $$('[data-jpg]').forEach(b => b.onclick = async () => downloadBlob(await imgFile(+b.dataset.jpg), `${name}_${+b.dataset.jpg + 1}쪽.jpg`));
-        const share = async files => {
-          if (navigator.canShare && navigator.canShare({ files })) {
-            try { await navigator.share({ files, title: name }); } catch (e) { if (e.name !== 'AbortError') toast('공유 실패: ' + e.message); }
-          } else toast('이 브라우저는 파일 공유를 지원하지 않습니다. 저장 버튼을 이용하세요.');
-        };
-        $('#sv-share').onclick = () => share([new File([res.pdf], name + '.pdf', { type: 'application/pdf' })]);
-        $('#sv-imgshare').onclick = async () => share(await Promise.all(res.pages.map((_, i) => imgFile(i))));
+        const share = files => shareFiles(files, name);
+        $('#sv-share').onclick = () => share([pdfFile]);
+        $('#sv-imgshare').onclick = () => share(imgFiles);
         $('#out').scrollIntoView({ behavior: 'smooth' });
         btn.textContent = '다시 만들기';
       } catch (e) {

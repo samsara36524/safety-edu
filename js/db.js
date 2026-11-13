@@ -30,6 +30,14 @@ const DB = (() => {
     get: (store, key) => tx(store, 'readonly', s => s.get(key)),
     all: (store) => tx(store, 'readonly', s => s.getAll()),
     put: (store, val, key) => tx(store, 'readwrite', s => key === undefined ? s.put(val) : s.put(val, key)),
-    del: (store, key) => tx(store, 'readwrite', s => s.delete(key)),
+    // 교육·점검 기록을 지우면 삭제 기록(tombs)을 남겨 다른 기기와 합칠 때도 지워지게 한다
+    del: async (store, key) => {
+      await tx(store, 'readwrite', s => s.delete(key));
+      if (store === 'sessions') {
+        const t = (await tx('kv', 'readonly', s => s.get('tombs')).catch(() => null)) || {};
+        t[key] = Date.now();
+        await tx('kv', 'readwrite', s => s.put(t, 'tombs')).catch(() => {});
+      }
+    },
   };
 })();
